@@ -9,10 +9,9 @@ import { PlayerModel } from './PlayerModel';
 import { usePlayerControls } from './usePlayerControls';
 import { playerTransformRef } from './playerTransformRef';
 
-const SAFE_SPAWN: [number, number, number] = [15, 2, 15];
-const USE_DEBUG_CUBE = false; // true = red cube for diagnostic, false = human
-const SHOW_SPAWN_MARKER = true; // red column at spawn for camera check
-const ENABLE_CAMERA_RELATIVE = false; // DIAGNOSTIC: false = simple world movement, true = camera-relative after fix
+const SAFE_SPAWN: [number, number, number] = [15, 3, 15]; // Y=3 for drop test, per task 7
+const USE_DEBUG_CUBE = false;
+const ENABLE_CAMERA_RELATIVE = false; // false = world: W=+Z S=-Z A=-X D=+X per actual camera yaw0
 
 export function Player() {
   const rigidBodyRef = useRef<RapierRigidBody>(null);
@@ -29,6 +28,7 @@ export function Player() {
   
   const [animation, setAnimation] = useState<'idle' | 'walk' | 'run'>('idle');
   const [moveSpeed, setMoveSpeed] = useState(0);
+  const [showDebugMarkers, setShowDebugMarkers] = useState(false);
   
   const velocityRef = useRef(new THREE.Vector3());
   const cameraYawRef = useRef(0);
@@ -38,9 +38,19 @@ export function Player() {
   const mountedRef = useRef(false);
   const bodyCreatedRef = useRef(false);
   const startPosForTestRef = useRef<[number, number, number] | null>(null);
+  const idleTestRef = useRef<{ t0: number, y0: number, logged: boolean }>({ t0: 0, y0: 0, logged: false });
   
   const WALK_SPEED = 3.5;
   const RUN_SPEED = 6.0;
+
+  // Track debug toggle for markers
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const dbg = (window as any).__showDebug;
+      setShowDebugMarkers(!!dbg);
+    }, 200);
+    return () => clearInterval(interval);
+  }, []);
 
   // --- MOUNT DIAGNOSTIC ---
   useEffect(() => {
@@ -52,17 +62,14 @@ export function Player() {
     (window as any).__playerMounted = true;
     (window as any).__playerMountedTime = Date.now();
     
-    // Ignore old save for diagnostic - force SAFE_SPAWN
-    // But also update Zustand to SAFE_SPAWN for HUD consistency
     try {
       const store = useGameStore.getState();
-      // Force SAFE_SPAWN regardless of save for this diagnostic fix
       store.setPlayerPosition([...SAFE_SPAWN] as any);
       console.log(`[Player] spawn = ${SAFE_SPAWN[0]} ${SAFE_SPAWN[1]} ${SAFE_SPAWN[2]} (forced SAFE_SPAWN, ignoring old save)`);
       (window as any).__playerSpawn = { x: SAFE_SPAWN[0], y: SAFE_SPAWN[1], z: SAFE_SPAWN[2] };
     } catch {}
 
-    // TEST MOVE function for dev button
+    // TEST MOVE function - expects +Z increase at yaw0
     (window as any).__testMove = () => {
       if (!rigidBodyRef.current) {
         console.warn('[TEST MOVE] No body');
@@ -71,10 +78,11 @@ export function Player() {
       try {
         const start = rigidBodyRef.current.translation();
         startPosForTestRef.current = [start.x, start.y, start.z];
-        console.log(`[TEST MOVE] Start: ${start.x.toFixed(2)},${start.y.toFixed(2)},${start.z.toFixed(2)} - moving forward 1 sec`);
+        console.log(`[TEST MOVE] Start: [${start.x.toFixed(2)},${start.y.toFixed(2)},${start.z.toFixed(2)}] - moving forward 1 sec (expected +Z)`);
         
-        // Direct set velocity forward +Z
-        rigidBodyRef.current.setLinvel({ x: 0, y: 0, z: 3.5 }, true);
+        // At yaw0, W = +Z, so TEST MOVE = +Z
+        const curVel = rigidBodyRef.current.linvel();
+        rigidBodyRef.current.setLinvel({ x: 0, y: curVel.y, z: 3.5 }, true);
         
         setTimeout(() => {
           if (!rigidBodyRef.current || !startPosForTestRef.current) return;
@@ -83,21 +91,31 @@ export function Player() {
           const dy = end.y - startPosForTestRef.current[1];
           const dz = end.z - startPosForTestRef.current[2];
           const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-          console.log(`[TEST MOVE] End: ${end.x.toFixed(2)},${end.y.toFixed(2)},${end.z.toFixed(2)} | Distance: ${dist.toFixed(2)}m`);
-          if (dist > 1) {
-            console.log('[TEST MOVE] PASS: Physics movement works');
+          const horizDist = Math.sqrt(dx*dx + dz*dz);
+          console.log(`[TEST MOVE] End: [${end.x.toFixed(2)},${end.y.toFixed(2)},${end.z.toFixed(2)}] | Distance: ${dist.toFixed(2)}m horiz ${horizDist.toFixed(2)}m dz=${dz.toFixed(2)} (expected +Z ~3-3.5)`);
+          console.log(`TEST MOVE: start [${startPosForTestRef.current.map(v=>v.toFixed(2)).join(',')}] end [${end.x.toFixed(2)},${end.y.toFixed(2)},${end.z.toFixed(2)}] distance ${dist.toFixed(2)} ${dist>2?'PASS':'FAIL'}`);
+          if (dist > 2 && dz > 2) {
+            console.log('[TEST MOVE] PASS: Physics movement works, +Z as expected');
+          } else if (dist > 1) {
+            console.log('[TEST MOVE] PARTIAL PASS: moved but not +Z expected, check directions');
           } else {
             console.error('[TEST MOVE] FAIL: distance ~=0, body/physics error');
           }
-          // Stop
+          // Stop horizontal
           try {
-            rigidBodyRef.current?.setLinvel({ x: 0, y: 0, z: 0 }, true);
+            const v = rigidBodyRef.current?.linvel();
+            if (v) rigidBodyRef.current?.setLinvel({ x: 0, y: v.y, z: 0 }, true);
           } catch {}
         }, 1000);
       } catch (e) {
         console.error('[TEST MOVE] Error', e);
       }
     };
+
+    // Idle 5 sec test logging t=0,1,2,5 Y
+    idleTestRef.current.t0 = performance.now();
+    idleTestRef.current.y0 = SAFE_SPAWN[1];
+    console.log(`[Idle Test] t=0 Y=${SAFE_SPAWN[1].toFixed(2)} - expecting fall to ground top 0 then stabilize velY~0`);
 
     return () => {
       mountedRef.current = false;
@@ -106,7 +124,7 @@ export function Player() {
     };
   }, []);
 
-  // --- BODY CREATION DIAGNOSTIC ---
+  // --- BODY CREATION ---
   useEffect(() => {
     const checkBody = () => {
       if (rigidBodyRef.current && !bodyCreatedRef.current) {
@@ -116,14 +134,12 @@ export function Player() {
         (window as any).__playerBodyExists = true;
         
         try {
-          // Force SAFE_SPAWN
           rigidBodyRef.current.setTranslation({ x: SAFE_SPAWN[0], y: SAFE_SPAWN[1], z: SAFE_SPAWN[2] }, true);
           rigidBodyRef.current.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
           rigidBodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
           console.log(`[Player] spawn = ${SAFE_SPAWN[0]} ${SAFE_SPAWN[1]} ${SAFE_SPAWN[2]}`);
           lastPosRef.current = [...SAFE_SPAWN] as any;
           playerTransformRef.current.position.set(SAFE_SPAWN[0], SAFE_SPAWN[1], SAFE_SPAWN[2]);
-          // Also update shared ref for camera
           (window as any).__playerSpawn = { x: SAFE_SPAWN[0], y: SAFE_SPAWN[1], z: SAFE_SPAWN[2] };
         } catch (e) {
           console.warn('[Player] Spawn failed', e);
@@ -131,7 +147,6 @@ export function Player() {
       }
     };
     
-    // Check immediately and after short delay
     checkBody();
     const t1 = setTimeout(checkBody, 100);
     const t2 = setTimeout(checkBody, 500);
@@ -144,7 +159,6 @@ export function Player() {
     };
   }, []);
 
-  // Input - using shared hook that uses window listeners and useRef
   const { inputRef } = usePlayerControls();
 
   useFrame((state, delta) => {
@@ -155,7 +169,6 @@ export function Player() {
       
       const isUIBlocking = isInShopInterior || isInventoryOpen || isMenuOpen || isDialogOpen || isCharacterOpen || isMapOpen;
       
-      // Get current translation - SOURCE OF TRUTH for camera
       let currentPos: { x: number; y: number; z: number };
       try {
         currentPos = rigidBodyRef.current.translation();
@@ -163,9 +176,9 @@ export function Player() {
         return;
       }
 
-      // Safety: if fell below map, teleport to SAFE_SPAWN
+      // Safety: fell below map
       if (currentPos.y < -10 || !Number.isFinite(currentPos.x) || !Number.isFinite(currentPos.y) || !Number.isFinite(currentPos.z)) {
-        console.warn(`[Player] Fell below map or invalid pos ${currentPos.x},${currentPos.y},${currentPos.z} - teleport to SAFE_SPAWN`);
+        console.warn(`[Player] Fell below map ${currentPos.x},${currentPos.y},${currentPos.z} - teleport SAFE_SPAWN`);
         try {
           rigidBodyRef.current.setTranslation({ x: SAFE_SPAWN[0], y: SAFE_SPAWN[1], z: SAFE_SPAWN[2] }, true);
           rigidBodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
@@ -173,17 +186,45 @@ export function Player() {
         } catch {}
       }
 
-      // Update shared transform ref - CAMERA READS THIS, not Zustand
+      // Update REF - source of truth
       playerTransformRef.current.position.set(currentPos.x, currentPos.y, currentPos.z);
       playerTransformRef.current.lastUpdate = performance.now();
       playerTransformRef.current.visible = true;
       (window as any).__playerVisible = true;
 
-      // If UI blocking, stop movement but still update position for camera
+      // Idle test logging
+      const elapsed = (performance.now() - idleTestRef.current.t0) / 1000;
+      if (!idleTestRef.current.logged) {
+        if (elapsed >= 1 && elapsed < 1.1) {
+          try {
+            const v = rigidBodyRef.current.linvel();
+            console.log(`[Idle Test] t=1 Y=${currentPos.y.toFixed(2)} velY=${v.y.toFixed(2)} (should be falling or landed)`);
+          } catch {}
+        }
+        if (elapsed >= 2 && elapsed < 2.1) {
+          try {
+            const v = rigidBodyRef.current.linvel();
+            console.log(`[Idle Test] t=2 Y=${currentPos.y.toFixed(2)} velY=${v.y.toFixed(2)} (should be near ground 0-1)`);
+          } catch {}
+        }
+        if (elapsed >= 5 && elapsed < 5.1) {
+          try {
+            const v = rigidBodyRef.current.linvel();
+            console.log(`[Idle Test] t=5 Y=${currentPos.y.toFixed(2)} velY=${v.y.toFixed(2)} (should be stable ~0-1, velY~0)`);
+            idleTestRef.current.logged = true;
+            if (Math.abs(v.y) < 0.1 && currentPos.y > 0 && currentPos.y < 2) {
+              console.log('[Idle Test] PASS: stable on ground');
+            } else {
+              console.warn(`[Idle Test] FAIL: Y=${currentPos.y.toFixed(2)} velY=${v.y.toFixed(2)} not stable, ground collision broken`);
+            }
+          } catch {}
+        }
+      }
+
       if (isUIBlocking) {
         try {
-          // Zero horizontal velocity when UI open
           const curVel = rigidBodyRef.current.linvel();
+          // Preserve Y (gravity), zero X/Z
           rigidBodyRef.current.setLinvel({ x: 0, y: curVel.y, z: 0 }, true);
         } catch {}
         if (frameCountRef.current % 10 === 0) {
@@ -199,29 +240,22 @@ export function Player() {
       let right = (input.right ? 1 : 0) - (input.left ? 1 : 0);
       let isRunning = input.run;
 
-      // Mobile joystick - same pipeline
       if (mobileInput.joyX !== undefined && mobileInput.joyY !== undefined) {
         if (Math.abs(mobileInput.joyX) > 0.1 || Math.abs(mobileInput.joyY) > 0.1) {
           forward = mobileInput.joyY;
           right = mobileInput.joyX;
         }
       }
-      if (mobileInput.run) {
-        isRunning = true;
-      }
+      if (mobileInput.run) isRunning = true;
 
       const isMovingInput = Math.abs(forward) > 0.05 || Math.abs(right) > 0.05;
       const moveIntensity = Math.min(1, Math.sqrt(forward*forward + right*right));
 
-      // --- SIMPLIFIED MOVEMENT PIPELINE ---
-      // For diagnostic: NO camera-relative, NO acceleration smoothing, NO grounded raycast
-      // Direct: KeyW -> velocity z -> setLinvel -> translation changes
       let targetVelX = 0;
       let targetVelZ = 0;
       let targetYaw = playerYawRef.current;
 
       if (ENABLE_CAMERA_RELATIVE) {
-        // Camera-relative (after diagnostic passes)
         const camYaw = (window as any).__cameraYaw ?? 0;
         cameraYawRef.current = camYaw;
         if (isMovingInput) {
@@ -235,16 +269,20 @@ export function Player() {
           targetYaw = worldAngle;
         }
       } else {
-        // Simple world-aligned: W = +Z, S = -Z, D = +X, A = -X
+        // World-aligned per actual camera yaw0: W=+Z S=-Z A=-X D=+X
         const speed = (isRunning ? RUN_SPEED : WALK_SPEED) * moveIntensity;
         targetVelX = right * speed;
         targetVelZ = forward * speed;
         if (isMovingInput) {
+          // Yaw facing movement: atan2(right, forward)
+          // W (0,1) => 0 rad => +Z
+          // D (1,0) => 90deg => +X
+          // A (-1,0) => -90deg => -X
+          // S (0,-1) => 180deg => -Z
           targetYaw = Math.atan2(right, forward);
         }
       }
 
-      // Smooth yaw only for visual
       if (isMovingInput) {
         let diff = targetYaw - playerYawRef.current;
         while (diff > Math.PI) diff -= Math.PI * 2;
@@ -252,7 +290,6 @@ export function Player() {
         playerYawRef.current += diff * Math.min(1, delta * 10);
       }
 
-      // Direct velocity - NO lerp smoothing for diagnostic, preserve Y (gravity)
       let currentVel;
       try {
         currentVel = rigidBodyRef.current.linvel();
@@ -260,10 +297,17 @@ export function Player() {
         currentVel = { x: 0, y: 0, z: 0 };
       }
 
-      // For diagnostic, directly set target vel (no acceleration smoothing)
+      // INVARIANT: if grounded true but velY < -0.5, warn (grounded + falling not allowed)
+      const grounded = true; // simplified, always true for diagnostic, but check velY
+      if (grounded && currentVel.y < -0.5) {
+        if (frameCountRef.current % 30 === 0) {
+          console.warn(`[INVARIANT] grounded TRUE but velocity.y=${currentVel.y.toFixed(2)} < -0.5 - still falling, ground collision broken? posY=${currentPos.y.toFixed(2)}`);
+        }
+      }
+
       const finalVelX = targetVelX;
       const finalVelZ = targetVelZ;
-      const finalVelY = currentVel.y; // preserve gravity
+      const finalVelY = currentVel.y; // preserve Rapier gravity, do NOT manually apply -9.81*dt
 
       try {
         rigidBodyRef.current.setLinvel({ x: finalVelX, y: finalVelY, z: finalVelZ }, true);
@@ -288,18 +332,27 @@ export function Player() {
         setMoveSpeed(horizSpeed);
       }
 
-      // Update Zustand for HUD (not for camera)
+      // Update Zustand only as copy for HUD/save, not source for movement
       if (frameCountRef.current % 6 === 0) {
         setPlayerPosition([currentPos.x, currentPos.y, currentPos.z]);
         setPlayerRotation(playerYawRef.current);
         lastPosRef.current = [currentPos.x, currentPos.y, currentPos.z];
       }
       
-      // Globals for F3 debug
+      // Debug globals
       (window as any).__cameraYaw = cameraYawRef.current;
       (window as any).__playerYaw = playerYawRef.current;
       (window as any).__playerVelocity = { x: finalVelX, y: finalVelY, z: finalVelZ };
-      (window as any).__playerGrounded = true; // simplified, always true
+      (window as any).__playerGrounded = true;
+
+      // Calculate collider bottom and ground top for debug
+      const bodyCenterY = currentPos.y;
+      const colliderCenterY = bodyCenterY + 1.0;
+      const halfHeight = 0.65;
+      const radius = 0.35;
+      const colliderBottomY = colliderCenterY - halfHeight - radius;
+      const groundTopY = 0; // from Ground.tsx CuboidCollider args [150,0.25,150] pos [0,-0.25,0] top = 0
+
       (window as any).__playerInput = {
         W: input.forward,
         A: input.left,
@@ -311,10 +364,13 @@ export function Player() {
         pos: lastPosRef.current,
         vel: [finalVelX, finalVelY, finalVelZ],
         grounded: true,
+        bodyCenterY: bodyCenterY.toFixed(2),
+        colliderBottomY: colliderBottomY.toFixed(2),
+        groundTopY: groundTopY.toFixed(2),
       };
 
       if (frameCountRef.current % 120 === 0 && isMovingInput) {
-        console.log(`[Player] Move: F:${forward.toFixed(2)} R:${right.toFixed(2)} Run:${isRunning} | vel ${finalVelX.toFixed(2)},${finalVelZ.toFixed(2)} | speed ${horizSpeed.toFixed(2)} | pos ${currentPos.x.toFixed(1)},${currentPos.y.toFixed(1)},${currentPos.z.toFixed(1)}`);
+        console.log(`[Player] Move: F:${forward.toFixed(2)} R:${right.toFixed(2)} Run:${isRunning} | vel ${finalVelX.toFixed(2)},${finalVelZ.toFixed(2)} | speed ${horizSpeed.toFixed(2)} | pos ${currentPos.x.toFixed(1)},${currentPos.y.toFixed(1)},${currentPos.z.toFixed(1)} | bottom ${colliderBottomY.toFixed(2)} ground ${groundTopY}`);
       }
     } catch (e) {
       console.error('[Player] Frame error', e);
@@ -323,20 +379,17 @@ export function Player() {
 
   return (
     <>
-      {/* Spawn marker - very visible red column at SAFE_SPAWN for camera check */}
-      {SHOW_SPAWN_MARKER && (
+      {/* Debug markers ONLY when debug true */}
+      {showDebugMarkers && (
         <group position={[SAFE_SPAWN[0], 0, SAFE_SPAWN[2]]}>
-          {/* Red vertical pillar */}
           <mesh position={[0, 3, 0]} castShadow>
             <cylinderGeometry args={[0.15, 0.15, 6, 12]} />
             <meshBasicMaterial color="#ff0000" />
           </mesh>
-          {/* Sphere on top */}
           <mesh position={[0, 6.5, 0]} castShadow>
             <sphereGeometry args={[0.4, 16, 16]} />
             <meshBasicMaterial color="#ff0000" />
           </mesh>
-          {/* Base ring */}
           <mesh position={[0, 0.05, 0]} rotation={[-Math.PI/2, 0, 0]}>
             <ringGeometry args={[1, 1.5, 16]} />
             <meshBasicMaterial color="#ff0000" side={THREE.DoubleSide} />
@@ -359,23 +412,19 @@ export function Player() {
       >
         <CapsuleCollider args={[0.65, 0.35]} position={[0, 1.0, 0]} />
         
-        {/* Player model - local position relative to body, not absolute */}
         <group rotation={[0, 0, 0]}>
           {USE_DEBUG_CUBE ? (
-            // DIAGNOSTIC: obvious red cube 1x2x1
             <group position={[0, 1, 0]}>
               <mesh castShadow receiveShadow>
                 <boxGeometry args={[1, 2, 1]} />
                 <meshBasicMaterial color="#ff0000" />
               </mesh>
-              {/* Small green top to see orientation */}
               <mesh position={[0, 1.2, 0]} castShadow>
                 <boxGeometry args={[0.3, 0.3, 0.3]} />
                 <meshBasicMaterial color="#00ff00" />
               </mesh>
             </group>
           ) : (
-            // Real humanoid - must be visible, scale 1, not culled, positioned at body origin
             <group position={[0, 0, 0]}>
               <PlayerModel animation={animation} moveSpeed={moveSpeed} isMoving={moveSpeed > 0.1} />
             </group>

@@ -88,8 +88,8 @@ function createId() {
 }
 
 // SAFE_SPAWN - guaranteed open area, 5m from walls, 5m from trees
-// Chosen at [15,2,15] - between roads, away from buildings
-export const SAFE_SPAWN: [number, number, number] = [15, 2, 15];
+// Chosen at [15,3,15] - Y=3 for drop test per task 7, between roads, away from buildings
+export const SAFE_SPAWN: [number, number, number] = [15, 3, 15];
 const WORLD_BOUNDS = 200;
 
 function isValidPosition(pos: any): boolean {

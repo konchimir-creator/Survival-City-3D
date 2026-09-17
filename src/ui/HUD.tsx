@@ -92,6 +92,7 @@ function DebugOverlay() {
         <div>Zustand Pos: {debugData.playerPos[0]}, {debugData.playerPos[1]}, {debugData.playerPos[2]}</div>
         <div>Vel REF: {debugData.transform ? `${debugData.transform.vx},${debugData.transform.vy},${debugData.transform.vz}` : 'none'}</div>
         <div>Vel Input: {debugData.input?.vel ? `${debugData.input.vel[0].toFixed(2)},${debugData.input.vel[1].toFixed(2)},${debugData.input.vel[2].toFixed(2)}` : 'none'}</div>
+        <div>BodyCenterY: {debugData.input?.bodyCenterY || 'n/a'} ColliderBottomY: {debugData.input?.colliderBottomY || 'n/a'} GroundTopY: {debugData.input?.groundTopY || '0'}</div>
         <div>Rot: {debugData.playerRot}°</div>
         <div>SavedValid: {debugData.savedValid === undefined ? 'new/forced' : debugData.savedValid ? 'true' : 'false (forced SAFE_SPAWN)'}</div>
       </div>

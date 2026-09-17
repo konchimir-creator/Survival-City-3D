@@ -1,17 +1,9 @@
 'use client';
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
-import { RigidBody } from '@react-three/rapier';
+import { RigidBody, CuboidCollider } from '@react-three/rapier';
 
 export function Ground() {
-  const groundMaterial = useMemo(() => {
-    return new THREE.MeshStandardMaterial({
-      color: '#3a3a3a',
-      roughness: 0.95,
-      metalness: 0.02,
-    });
-  }, []);
-
   const grassMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
       color: '#2a4a1a',
@@ -22,12 +14,12 @@ export function Ground() {
 
   return (
     <>
-      {/* Main ground plane - 500x500 - collider only */}
-      <RigidBody type="fixed" colliders="cuboid" position={[0, -0.5, 0]}>
-        <mesh receiveShadow position={[0, 0, 0]} visible={false}>
-          <boxGeometry args={[500, 1, 500]} />
-          <primitive object={groundMaterial} attach="material" />
-        </mesh>
+      {/* GUARANTEED PHYSICAL FLOOR - independent of visual roads, no custom collisionGroups, no rotation, no scale */}
+      <RigidBody type="fixed" colliders={false} position={[0, 0, 0]}>
+        <CuboidCollider
+          args={[150, 0.25, 150]}
+          position={[0, -0.25, 0]}
+        />
       </RigidBody>
 
       {/* Visual ground - more natural, not just flat gray */}
