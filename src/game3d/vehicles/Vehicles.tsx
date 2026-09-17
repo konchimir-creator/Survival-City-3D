@@ -59,15 +59,16 @@ function createVehicles(count: number): VehicleData[] {
 function Vehicle({ data }: { data: VehicleData }) {
   const meshRef = useRef<THREE.Group>(null);
   const wheelRefs = useRef<THREE.Mesh[]>([]);
+  const headLightRefs = useRef<THREE.MeshStandardMaterial[]>([]);
+  const tailLightRefs = useRef<THREE.MeshStandardMaterial[]>([]);
 
   useFrame((state, delta) => {
     if (!meshRef.current) return;
 
-    // LOD - skip far vehicles less often
     const camPos = (window as any).__cameraPosition as THREE.Vector3;
     if (camPos) {
       const dist = meshRef.current.position.distanceTo(camPos);
-      if (dist > 80 && Math.random() < 0.5) return; // skip update for far
+      if (dist > 80 && Math.random() < 0.5) return;
     }
 
     const target = data.route[data.routeIndex];
@@ -90,12 +91,24 @@ function Vehicle({ data }: { data: VehicleData }) {
     }
 
     meshRef.current.position.copy(data.position);
-    meshRef.current.position.y = 0.35; // lower, realistic
+    meshRef.current.position.y = 0.35;
     meshRef.current.rotation.y = data.rotation;
 
     wheelRefs.current.forEach((wheel) => {
       if (wheel) wheel.rotation.x += delta * data.speed * 2.5;
     });
+
+    // Night lights
+    try {
+      const tod = (window as any).__timeOfDay || 'day';
+      const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
+      headLightRefs.current.forEach(m => {
+        if (m) m.emissiveIntensity = isNight ? 1.2 : 0.4;
+      });
+      tailLightRefs.current.forEach(m => {
+        if (m) m.emissiveIntensity = isNight ? 1.0 : 0.3;
+      });
+    } catch {}
   });
 
   const isVan = data.type === 'van';
@@ -164,23 +177,23 @@ function Vehicle({ data }: { data: VehicleData }) {
         </group>
       ))}
 
-      {/* Headlights */}
+      {/* Headlights - night turns on brighter */}
       <mesh position={[-0.55, 0.4, 2.15]} >
         <sphereGeometry args={[0.12, 8, 8]} />
-        <meshStandardMaterial color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.6} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) headLightRefs.current[0]=el; }} color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.6} />
       </mesh>
       <mesh position={[0.55, 0.4, 2.15]} >
         <sphereGeometry args={[0.12, 8, 8]} />
-        <meshStandardMaterial color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.6} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) headLightRefs.current[1]=el; }} color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.6} />
       </mesh>
       {/* Taillights */}
       <mesh position={[-0.6, 0.5, -2.15]} >
         <boxGeometry args={[0.15, 0.15, 0.05]} />
-        <meshStandardMaterial color="#ff2222" emissive="#ff0000" emissiveIntensity={0.5} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) tailLightRefs.current[0]=el; }} color="#ff2222" emissive="#ff0000" emissiveIntensity={0.5} />
       </mesh>
       <mesh position={[0.6, 0.5, -2.15]} >
         <boxGeometry args={[0.15, 0.15, 0.05]} />
-        <meshStandardMaterial color="#ff2222" emissive="#ff0000" emissiveIntensity={0.5} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) tailLightRefs.current[1]=el; }} color="#ff2222" emissive="#ff0000" emissiveIntensity={0.5} />
       </mesh>
       
       {/* Taxi sign */}
