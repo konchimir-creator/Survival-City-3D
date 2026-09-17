@@ -115,6 +115,15 @@ export const BUILDINGS: BuildingDef[] = [
     interactable: true,
   },
   {
+    id: 'abandoned_2',
+    name: 'Abandoned Building 2',
+    nameRu: 'Заброшка 2',
+    type: 'abandoned',
+    position: [-110, 0, 12],
+    size: [16, 12, 14],
+    interactable: true,
+  },
+  {
     id: 'internet_cafe_1',
     name: 'Internet Cafe',
     nameRu: 'Интернет-кафе',

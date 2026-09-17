@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { BUILDINGS, BuildingDef } from '@/game/world/types';
-import { AbandonedHouseReal } from './RealBuilding';
+import { AbandonedHouseReal, AbandonedHouse02Real } from './RealBuilding';
 import { ShowcaseResidential } from './ShowcaseResidential';
 
 function Building({ def }: { def: BuildingDef }) {
@@ -363,9 +363,13 @@ export function Buildings() {
   return (
     <group>
       {BUILDINGS.map((b) => {
-        // Real abandoned GLB
+        // Real abandoned GLB 01 - scale 14.8 preserved
         if (b.id === 'abandoned_1') {
           return <AbandonedHouseReal key={b.id} def={b} />;
+        }
+        // Real abandoned GLB 02 - diagnostic stage scale 1, separate placement [-110,0,12]
+        if (b.id === 'abandoned_2') {
+          return <AbandonedHouse02Real key={b.id} def={b} />;
         }
         // Showcase realistic residential - one quality reference building
         if (b.id === 'residential_2') {
