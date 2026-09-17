@@ -230,14 +230,68 @@ export function RealBuilding({ url, def, fallback }: { url: string; def: Buildin
 }
 
 // Specific wrapper for abandoned_house_01.glb replacing abandoned_1
+// Door opening physically free: width 1.1-1.3m height >=2.2m
+// Multiple cheap CuboidColliders, no TrimeshCollider
 export function AbandonedHouseReal({ def }: { def: BuildingDef }) {
   const { position, size, rotation = 0 } = def;
   const url = '/models/buildings/abandoned/abandoned_house_01.glb';
 
+  // Use actual def.size [16,12,14] but keep configurable for real GLB Box3
+  // Door centered at front facade (local +Z)
+  const wallThickness = 0.35;
+  const doorWidth = 1.2; // 1.1-1.3m per task
+  const doorHeight = 2.3; // >=2.2m
+  const halfW = size[0] / 2; // 8
+  const halfH = size[1] / 2; // 6
+  const halfD = size[2] / 2; // 7
+
+  const frontZ = halfD - wallThickness / 2; // 6.825
+  const backZ = -halfD + wallThickness / 2; // -6.825
+  const leftX = -halfW + wallThickness / 2; // -7.825
+  const rightX = halfW - wallThickness / 2; // 7.825
+
+  // Front left part: from -halfW to -doorWidth/2
+  const frontLeftWidth = halfW - doorWidth / 2; // 8 - 0.6 = 7.4
+  const frontLeftHalfW = frontLeftWidth / 2; // 3.7
+  const frontLeftCenterX = -halfW + frontLeftHalfW; // -8 + 3.7 = -4.3
+
+  // Front right part symmetric
+  const frontRightWidth = frontLeftWidth;
+  const frontRightHalfW = frontLeftHalfW;
+  const frontRightCenterX = halfW - frontRightHalfW; // 4.3
+
+  // Front top above door
+  const topHeight = size[1] - doorHeight; // 9.7
+  const topHalfH = topHeight / 2; // 4.85
+  const topCenterY = doorHeight + topHalfH; // 7.15
+
+  // Interior floor collider if GLB has no floor (simple invisible)
+  const floorHalfW = halfW - wallThickness;
+  const floorHalfD = halfD - wallThickness;
+
   return (
     <RigidBody type="fixed" colliders={false} position={position} rotation={[0, rotation, 0]}>
-      {/* Keep simple CuboidCollider - do NOT use GLB geometry as physics trimesh */}
-      <CuboidCollider args={[size[0]/2, size[1]/2, size[2]/2]} />
+      {/* Front facade split - leave door opening free */}
+      {/* Left part of front */}
+      <CuboidCollider args={[frontLeftHalfW, halfH, wallThickness / 2]} position={[frontLeftCenterX, halfH, frontZ]} />
+      {/* Right part of front */}
+      <CuboidCollider args={[frontRightHalfW, halfH, wallThickness / 2]} position={[frontRightCenterX, halfH, frontZ]} />
+      {/* Top part above door */}
+      <CuboidCollider args={[doorWidth / 2, topHalfH, wallThickness / 2]} position={[0, topCenterY, frontZ]} />
+
+      {/* Back wall full */}
+      <CuboidCollider args={[halfW, halfH, wallThickness / 2]} position={[0, halfH, backZ]} />
+
+      {/* Left side wall */}
+      <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[leftX, halfH, 0]} />
+
+      {/* Right side wall */}
+      <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[rightX, halfH, 0]} />
+
+      {/* Interior floor collider - ensures walkable inside if GLB has no floor, Ground world collider NOT changed */}
+      <CuboidCollider args={[floorHalfW, 0.1, floorHalfD]} position={[0, 0.1, 0]} />
+
+      {/* Visual - real GLB if exists, else procedural fallback */}
       <RealBuilding url={url} def={def} />
     </RigidBody>
   );
