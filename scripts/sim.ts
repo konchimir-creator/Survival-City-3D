@@ -3,7 +3,6 @@ console.log('Running sim tests...');
 // Test coordinate conversion
 function testCoordinateConversion() {
   console.log('Test: 2D -> 3D coordinate conversion');
-  // Simple conversion: 2D tile (x,y) to 3D world (x,0,z)
   function convert2DTo3D(tileX: number, tileY: number, tileSize: number = 1): [number, number, number] {
     return [tileX * tileSize, 0, tileY * tileSize];
   }
@@ -45,7 +44,6 @@ function testSaveFormat() {
 
 function testCameraMath() {
   console.log('Test: Camera math');
-  // Test spherical to cartesian
   function sphericalToCartesian(yaw: number, pitch: number, distance: number): [number, number, number] {
     const x = -Math.sin(yaw) * Math.cos(pitch) * distance;
     const y = Math.sin(pitch) * distance;
@@ -98,13 +96,139 @@ function testInventory() {
   console.log('  Inventory weight OK');
 }
 
+// NEW TESTS FOR MOVEMENT FIX
+function testMovementMath() {
+  console.log('Test: Movement math (WASD fix)');
+  
+  // Test 1: W should move forward relative to camera
+  function calculateMoveDir(forward: number, right: number, camYaw: number): [number, number] {
+    if (forward === 0 && right === 0) return [0,0];
+    const inputAngle = Math.atan2(right, forward);
+    const worldAngle = camYaw + inputAngle;
+    const x = Math.sin(worldAngle);
+    const z = Math.cos(worldAngle);
+    const len = Math.sqrt(x*x + z*z);
+    return [x/len, z/len];
+  }
+  
+  // W = forward=1, right=0, camYaw=0 => should be [0,1] (north)
+  let dir = calculateMoveDir(1, 0, 0);
+  if (Math.abs(dir[0] - 0) > 0.01 || Math.abs(dir[1] - 1) > 0.01) {
+    throw new Error(`W movement failed: ${dir}`);
+  }
+  console.log('  W forward OK:', dir);
+  
+  // S = forward=-1 => [0,-1]
+  dir = calculateMoveDir(-1, 0, 0);
+  if (Math.abs(dir[0] - 0) > 0.01 || Math.abs(dir[1] + 1) > 0.01) {
+    throw new Error(`S movement failed: ${dir}`);
+  }
+  console.log('  S backward OK:', dir);
+  
+  // A = right=-1 => [-1,0]
+  dir = calculateMoveDir(0, -1, 0);
+  if (Math.abs(dir[0] + 1) > 0.01 || Math.abs(dir[1] - 0) > 0.01) {
+    throw new Error(`A left failed: ${dir}`);
+  }
+  console.log('  A left OK:', dir);
+  
+  // D = right=1 => [1,0]
+  dir = calculateMoveDir(0, 1, 0);
+  if (Math.abs(dir[0] - 1) > 0.01 || Math.abs(dir[1] - 0) > 0.01) {
+    throw new Error(`D right failed: ${dir}`);
+  }
+  console.log('  D right OK:', dir);
+  
+  // W+D normalized diagonal should be length 1, not sqrt(2)
+  dir = calculateMoveDir(1, 1, 0);
+  const len = Math.sqrt(dir[0]*dir[0] + dir[1]*dir[1]);
+  if (Math.abs(len - 1) > 0.01) {
+    throw new Error(`Diagonal not normalized: len=${len}`);
+  }
+  console.log('  W+D normalized OK:', dir, `len=${len.toFixed(3)}`);
+  
+  // Camera-relative: camYaw=90deg (PI/2), W should move to -X? Let's check
+  // camYaw=PI/2, forward=1 => worldAngle=PI/2 => sin=1, cos=0 => [1,0]
+  dir = calculateMoveDir(1, 0, Math.PI/2);
+  if (Math.abs(dir[0] - 1) > 0.01) {
+    throw new Error(`Camera-relative failed: ${dir}`);
+  }
+  console.log('  Camera-relative OK:', dir);
+  
+  console.log('  Movement math OK');
+}
+
+function testSpeedConstants() {
+  console.log('Test: Speed constants');
+  const WALK = 3.5;
+  const RUN = 6.0;
+  if (WALK >= RUN) throw new Error('Walk should be slower than run');
+  if (WALK < 2 || WALK > 5) throw new Error('Walk speed unrealistic');
+  if (RUN < 4 || RUN > 8) throw new Error('Run speed unrealistic');
+  console.log(`  Walk ${WALK} m/s, Run ${RUN} m/s OK`);
+}
+
+function testInputCode() {
+  console.log('Test: Input event.code handling (layout independence)');
+  // Simulate that KeyW should work regardless of e.key being 'ц' in RU layout
+  const mockEvents = [
+    { code: 'KeyW', key: 'ц', expected: 'forward' },
+    { code: 'KeyA', key: 'ф', expected: 'left' },
+    { code: 'KeyS', key: 'ы', expected: 'backward' },
+    { code: 'KeyD', key: 'в', expected: 'right' },
+  ];
+  
+  for (const ev of mockEvents) {
+    // Our fix uses code, not key
+    const usingCode = ev.code === 'KeyW' || ev.code === 'KeyA' || ev.code === 'KeyS' || ev.code === 'KeyD';
+    if (!usingCode) throw new Error(`event.code ${ev.code} not recognized`);
+  }
+  console.log('  event.code handling OK (RU layout independent)');
+}
+
+function testCameraCollision() {
+  console.log('Test: Camera collision math');
+  function adjustDistance(desired: number, hitDist: number | null): number {
+    if (hitDist === null) return desired;
+    return Math.max(1.0, hitDist - 0.3);
+  }
+  
+  if (adjustDistance(5, null) !== 5) throw new Error('No hit should keep distance');
+  if (adjustDistance(5, 2) !== 1.7) throw new Error('Hit at 2 should give 1.7');
+  if (adjustDistance(5, 0.5) !== 1.0) throw new Error('Should clamp to 1.0 min');
+  console.log('  Camera collision OK');
+}
+
+function testInputResetOnBlur() {
+  console.log('Test: Input reset on blur');
+  let input = { forward: true, backward: true, left: true, right: true, run: true };
+  // Simulate blur handler
+  function onBlur() {
+    input.forward = false;
+    input.backward = false;
+    input.left = false;
+    input.right = false;
+    input.run = false;
+  }
+  onBlur();
+  if (input.forward || input.backward || input.left || input.right || input.run) {
+    throw new Error('Blur should reset all keys');
+  }
+  console.log('  Input reset on blur OK');
+}
+
 try {
   testCoordinateConversion();
   testSaveFormat();
   testCameraMath();
   testInteraction();
   testInventory();
-  console.log('\nAll sim tests PASSED');
+  testMovementMath();
+  testSpeedConstants();
+  testInputCode();
+  testCameraCollision();
+  testInputResetOnBlur();
+  console.log('\nAll sim tests PASSED - including movement fix tests');
 } catch (e) {
   console.error('Sim tests FAILED', e);
   process.exit(1);

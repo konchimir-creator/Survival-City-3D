@@ -6,58 +6,58 @@ import { RigidBody } from '@react-three/rapier';
 export function Ground() {
   const groundMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
-      color: '#4a4a4a',
-      roughness: 0.9,
-      metalness: 0.05,
+      color: '#3a3a3a',
+      roughness: 0.95,
+      metalness: 0.02,
     });
   }, []);
 
   const grassMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
-      color: '#3a5a2a',
+      color: '#2a4a1a',
       roughness: 0.95,
       metalness: 0,
     });
   }, []);
 
-  const sidewalkMaterial = useMemo(() => {
-    return new THREE.MeshStandardMaterial({
-      color: '#8a8a8a',
-      roughness: 0.85,
-      metalness: 0.1,
-    });
-  }, []);
-
   return (
     <>
-      {/* Main ground plane - 400x400 */}
+      {/* Main ground plane - 500x500 - collider only */}
       <RigidBody type="fixed" colliders="cuboid" position={[0, -0.5, 0]}>
-        <mesh receiveShadow position={[0, 0, 0]}>
-          <boxGeometry args={[400, 1, 400]} />
+        <mesh receiveShadow position={[0, 0, 0]} visible={false}>
+          <boxGeometry args={[500, 1, 500]} />
           <primitive object={groundMaterial} attach="material" />
         </mesh>
       </RigidBody>
 
-      {/* Sidewalks - defined as raised areas */}
-      {/* Central sidewalks around buildings */}
-      <group>
-        {/* Sidewalk around center */}
-        <mesh receiveShadow position={[0, 0.05, 0]}>
-          <boxGeometry args={[300, 0.2, 300]} />
-          <meshStandardMaterial color="#7a7a7a" roughness={0.85} />
-        </mesh>
-      </group>
+      {/* Visual ground - more natural, not just flat gray */}
+      <mesh receiveShadow position={[0, -0.02, 0]} rotation={[-Math.PI/2, 0, 0]}>
+        <planeGeometry args={[500, 500]} />
+        <meshStandardMaterial color="#2a2a2a" roughness={1} metalness={0} />
+      </mesh>
 
-      {/* Decorative ground patches - park */}
-      <mesh receiveShadow position={[ -20, 0.06, 80 ]} rotation={[-Math.PI/2, 0, 0]}>
+      {/* Grass patches - park and yards */}
+      <mesh receiveShadow position={[-20, 0.01, 80]} rotation={[-Math.PI/2, 0, 0]}>
         <planeGeometry args={[50, 30]} />
+        <primitive object={grassMaterial} attach="material" />
+      </mesh>
+      <mesh receiveShadow position={[-80, 0.01, -40]} rotation={[-Math.PI/2, 0, 0]}>
+        <planeGeometry args={[25, 25]} />
+        <primitive object={grassMaterial} attach="material" />
+      </mesh>
+      <mesh receiveShadow position={[60, 0.01, 40]} rotation={[-Math.PI/2, 0, 0]}>
+        <planeGeometry args={[20, 20]} />
         <primitive object={grassMaterial} attach="material" />
       </mesh>
 
       {/* Dirt patches */}
-      <mesh receiveShadow position={[100, 0.07, 20]} rotation={[-Math.PI/2, 0, 0]}>
+      <mesh receiveShadow position={[100, 0.015, 20]} rotation={[-Math.PI/2, 0, 0]}>
         <planeGeometry args={[30, 40]} />
-        <meshStandardMaterial color="#5a4a3a" roughness={1} />
+        <meshStandardMaterial color="#4a3a2a" roughness={1} />
+      </mesh>
+      <mesh receiveShadow position={[-100, 0.015, -70]} rotation={[-Math.PI/2, 0, 0]}>
+        <planeGeometry args={[20, 30]} />
+        <meshStandardMaterial color="#3a2a1a" roughness={1} />
       </mesh>
     </>
   );

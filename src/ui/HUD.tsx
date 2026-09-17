@@ -1,8 +1,64 @@
 'use client';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { formatTime, getTimeOfDay } from '@/game/time/types';
 import { JOBS } from '@/game/jobs/types';
+
+function DebugOverlay() {
+  const [debugData, setDebugData] = useState<any>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const player = useGameStore((s) => s.player);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const input = (window as any).__playerInput;
+      const camPos = (window as any).__cameraPosition;
+      const camTarget = (window as any).__cameraTarget;
+      const camDist = (window as any).__cameraDistance;
+      const show = (window as any).__showDebug;
+      
+      setShowDebug(!!show);
+      if (input) {
+        setDebugData({
+          input,
+          camPos: camPos ? { x: camPos.x.toFixed(1), y: camPos.y.toFixed(1), z: camPos.z.toFixed(1) } : null,
+          camTarget: camTarget ? { x: camTarget.x.toFixed(1), y: camTarget.y.toFixed(1), z: camTarget.z.toFixed(1) } : null,
+          camDist: camDist?.toFixed(1),
+          playerPos: player.position.map((v: number) => v.toFixed(2)),
+          playerRot: (player.rotation * 180 / Math.PI).toFixed(1),
+        });
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [player.position, player.rotation]);
+
+  if (!showDebug || !debugData) return null;
+
+  return (
+    <div className="absolute top-20 left-4 bg-black/80 backdrop-blur-sm rounded-lg p-3 text-xs text-white border border-white/20 pointer-events-none font-mono min-w-[280px] z-50">
+      <div className="font-bold mb-2 text-yellow-400">DEBUG [F3]</div>
+      <div className="grid grid-cols-2 gap-1">
+        <div>W: {debugData.input.W ? 'true' : 'false'}</div>
+        <div>A: {debugData.input.A ? 'true' : 'false'}</div>
+        <div>S: {debugData.input.S ? 'true' : 'false'}</div>
+        <div>D: {debugData.input.D ? 'true' : 'false'}</div>
+        <div>Shift: {debugData.input.Shift ? 'true' : 'false'}</div>
+        <div>Grounded: {debugData.input.grounded ? 'true' : 'false'}</div>
+      </div>
+      <div className="mt-2 border-t border-white/10 pt-2">
+        <div>Pos: {debugData.playerPos[0]}, {debugData.playerPos[1]}, {debugData.playerPos[2]}</div>
+        <div>Vel: {debugData.input.vel[0].toFixed(2)}, {debugData.input.vel[1].toFixed(2)}, {debugData.input.vel[2].toFixed(2)}</div>
+        <div>Rot: {debugData.playerRot}°</div>
+        <div>CamDist: {debugData.camDist}m</div>
+        <div>CamPos: {debugData.camPos?.x}, {debugData.camPos?.y}, {debugData.camPos?.z}</div>
+      </div>
+      <div className="mt-2 text-[10px] text-gray-400">
+        Using event.code (KeyW/A/S/D) - layout independent<br/>
+        Walk 3.5 m/s, Run 6.0 m/s, normalized diagonal
+      </div>
+    </div>
+  );
+}
 
 export function HUD() {
   const player = useGameStore((s) => s.player);
@@ -18,7 +74,7 @@ export function HUD() {
 
   return (
     <>
-      {/* Top left - needs */}
+      {/* Top left - needs - pointer-events-none so it doesn't block WASD */}
       <div className="absolute top-4 left-4 pointer-events-none">
         <div className="bg-black/60 backdrop-blur-sm rounded-lg p-3 space-y-2 min-w-[180px] border border-white/10">
           <div className="flex items-center gap-2 text-sm">
@@ -53,7 +109,7 @@ export function HUD() {
 
         {/* Job progress */}
         {job.isWorking && (
-          <div className="mt-3 bg-black/60 backdrop-blur-sm rounded-lg p-3 border border-white/10 min-w-[180px]">
+          <div className="mt-3 bg-black/60 backdrop-blur-sm rounded-lg p-3 border border-white/10 min-w-[180px] pointer-events-none">
             <div className="text-white text-xs font-bold mb-1">Работа: {JOBS[job.currentJob].nameRu}</div>
             <div className="h-2 bg-gray-700 rounded overflow-hidden">
               <div className="h-full bg-green-500" style={{ width: `${job.shiftProgress}%` }} />
@@ -68,7 +124,7 @@ export function HUD() {
         )}
       </div>
 
-      {/* Top center - money and time */}
+      {/* Top center - money and time - pointer-events-none */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none">
         <div className="bg-black/60 backdrop-blur-sm rounded-lg px-4 py-2 flex items-center gap-6 border border-white/10">
           <div className="flex items-center gap-2 text-white">
@@ -91,8 +147,8 @@ export function HUD() {
         </div>
       </div>
 
-      {/* Top right - quick actions */}
-      <div className="absolute top-4 right-4 flex gap-2">
+      {/* Top right - quick actions - pointer-events-auto only for buttons */}
+      <div className="absolute top-4 right-4 flex gap-2 pointer-events-none">
         <button
           onClick={() => useGameStore.getState().setCharacterOpen(true)}
           className="bg-black/60 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-2 text-white text-sm hover:bg-black/80 transition-colors pointer-events-auto"
@@ -120,23 +176,31 @@ export function HUD() {
 
       {/* Bottom center - interaction prompt */}
       {currentInteraction && (
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 pointer-events-none">
-          <div className="bg-black/70 backdrop-blur-sm rounded-lg px-6 py-3 border border-white/20 flex items-center gap-3 animate-pulse">
-            <span className="bg-white text-black px-2 py-1 rounded font-bold text-sm">E</span>
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none">
+          <div className="bg-black/80 backdrop-blur-sm rounded-lg px-6 py-3 border border-white/20 flex items-center gap-3 animate-pulse shadow-xl">
+            <span className="bg-white text-black px-2.5 py-1 rounded font-bold text-sm">E</span>
             <span className="text-white font-medium">{currentInteraction.labelRu}</span>
           </div>
         </div>
       )}
 
+      {/* Crosshair - subtle dot center */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+        <div className="w-1.5 h-1.5 bg-white/70 rounded-full shadow-[0_0_4px_rgba(255,255,255,0.8)]" />
+      </div>
+
       {/* Bottom left - controls hint */}
       <div className="absolute bottom-4 left-4 pointer-events-none">
         <div className="bg-black/40 backdrop-blur-sm rounded-lg px-3 py-2 text-xs text-gray-400 border border-white/5">
-          <div>WASD - движение | Shift - бег | Мышь - камера | Колесо - зум</div>
-          <div>E - действие | Esc - меню | Клик - захват мыши</div>
+          <div>WASD - движение (не зависит от раскладки) | Shift - бег | Мышь - камера | Колесо - зум | F3 - дебаг</div>
+          <div>E - действие | Esc - меню | Клик - захват мыши | Кроссовки влияют на скорость</div>
         </div>
       </div>
 
-      {/* Debug - FPS and position */}
+      {/* Debug overlay */}
+      <DebugOverlay />
+
+      {/* FPS and position - only if enabled */}
       {settings.showFPS && (
         <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-sm rounded-lg p-2 text-xs text-white border border-white/10 pointer-events-none">
           <div>Pos: {player.position[0].toFixed(1)}, {player.position[2].toFixed(1)}</div>

@@ -3,6 +3,7 @@ import React, { Suspense, useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Physics } from '@react-three/rapier';
 import { Preload, Stats } from '@react-three/drei';
+import * as THREE from 'three';
 import { Player } from './player/Player';
 import { CameraController } from './camera/CameraController';
 import { Ground } from './world/Ground';
@@ -59,7 +60,11 @@ function LoadingScreen({ progress }: { progress: number }) {
         <div className="h-full bg-[#4a8a4a] transition-all duration-300" style={{ width: `${progress}%` }} />
       </div>
       <p className="text-xs text-gray-500 mt-8 max-w-md text-center">
-        WAD - движение, Shift - бег, Мышь - камера, E - взаимодействие, I - инвентарь, C - персонаж, M - карта, Esc - меню
+        WASD - движение (не зависит от раскладки ENG/RUS) | Shift - бег | Мышь - камера | E - действие<br/>
+        I - инвентарь | C - персонаж | M - карта | Esc - меню | F3 - дебаг | Колесо - зум
+      </p>
+      <p className="text-[10px] text-gray-600 mt-4">
+        Исправлено: теперь используется event.code (KeyW/A/S/D) вместо event.key — работает с русской раскладкой
       </p>
     </div>
   );
@@ -71,7 +76,6 @@ export function City3D() {
   const settings = useGameStore((s) => s.settings);
   const loadGame = useGameStore((s) => s.loadGame);
   const tick = useGameStore((s) => s.tick);
-  const isInShopInterior = useGameStore((s) => s.isInShopInterior);
 
   // Simulate loading
   useEffect(() => {
@@ -117,7 +121,9 @@ export function City3D() {
     return () => clearInterval(interval);
   }, []);
 
-  const dpr = settings.graphics === 'low' ? 1 : settings.graphics === 'medium' ? Math.min(1.5, window.devicePixelRatio || 1) : Math.min(2, window.devicePixelRatio || 1);
+  const dpr = typeof window !== 'undefined' 
+    ? (settings.graphics === 'low' ? 1 : settings.graphics === 'medium' ? Math.min(1.5, window.devicePixelRatio || 1) : Math.min(2, window.devicePixelRatio || 1))
+    : 1;
 
   return (
     <div className="w-full h-screen bg-black relative overflow-hidden">
@@ -126,11 +132,17 @@ export function City3D() {
       <Canvas
         shadows={settings.graphics !== 'low'}
         dpr={dpr}
-        camera={{ fov: 75, near: 0.1, far: settings.graphics === 'low' ? 150 : settings.graphics === 'medium' ? 250 : 400 }}
-        gl={{ antialias: settings.graphics !== 'low', powerPreference: 'high-performance' }}
+        camera={{ fov: 65, near: 0.1, far: settings.graphics === 'low' ? 150 : settings.graphics === 'medium' ? 250 : 400 }}
+        gl={{ 
+          antialias: settings.graphics !== 'low', 
+          powerPreference: 'high-performance',
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.0,
+          outputColorSpace: THREE.SRGBColorSpace,
+        }}
         onCreated={({ gl }) => {
           gl.shadowMap.enabled = settings.graphics !== 'low';
-          gl.shadowMap.type = 2; // PCFSoft
+          gl.shadowMap.type = THREE.PCFSoftShadowMap;
         }}
       >
         <Suspense fallback={null}>
@@ -141,8 +153,6 @@ export function City3D() {
         </Suspense>
         <CameraController />
       </Canvas>
-
-      {/* WebGL Error Boundary is handled by parent */}
     </div>
   );
 }
