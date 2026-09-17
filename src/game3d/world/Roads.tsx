@@ -33,47 +33,74 @@ const INTERSECTION_SIZE = 12;
 const INTERSECTION_HALF = INTERSECTION_SIZE / 2;
 
 export function Roads() {
+  // Improved asphalt: darker base with subtle variation, not one-tone
   const roadMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#3a3a40',
-    roughness: 0.82,
-    metalness: 0.06,
-  }), []);
-
-  const markingMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#e8e0b0',
-    roughness: 0.75,
-    metalness: 0.02,
-  }), []);
-
-  const whiteMarkingMat = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#f5f5f5',
-    roughness: 0.65,
-    metalness: 0.05,
-  }), []);
-
-  const sidewalkMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#8e8e8e',
+    color: '#2e2e34',
     roughness: 0.88,
+    metalness: 0.04,
+  }), []);
+
+  const roadMaterialDark = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#25252a',
+    roughness: 0.90,
     metalness: 0.03,
   }), []);
 
+  const markingMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#d8c99a',
+    roughness: 0.78,
+    metalness: 0.01,
+  }), []);
+
+  const whiteMarkingMat = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#f0f0f0',
+    roughness: 0.70,
+    metalness: 0.02,
+  }), []);
+
+  // Sidewalks: more realistic concrete/paving variation, distinguishable from road/curb/grass
+  const sidewalkMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#9a9a9a',
+    roughness: 0.85,
+    metalness: 0.02,
+  }), []);
+
   const sidewalkDark = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#7a7a7a',
-    roughness: 0.90,
+    color: '#8a8a8a',
+    roughness: 0.87,
+    metalness: 0.02,
+  }), []);
+
+  const sidewalkLight = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#a8a8a8',
+    roughness: 0.83,
     metalness: 0.02,
   }), []);
 
   const curbMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#6e6e6e',
-    roughness: 0.88,
-    metalness: 0.05,
+    color: '#6a6a6a',
+    roughness: 0.82,
+    metalness: 0.08,
+  }), []);
+
+  const curbDark = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#5a5a5a',
+    roughness: 0.85,
+    metalness: 0.06,
   }), []);
 
   const asphaltPatchMat = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#1e1e22',
-    roughness: 0.92,
+    color: '#1a1a1e',
+    roughness: 0.93,
     transparent: true,
-    opacity: 0.45,
+    opacity: 0.38,
+  }), []);
+
+  const asphaltPatchLight = useMemo(() => new THREE.MeshStandardMaterial({
+    color: '#3a3a42',
+    roughness: 0.88,
+    transparent: true,
+    opacity: 0.22,
   }), []);
 
   // Generate road segments split at intersections to avoid overlapping geometry
@@ -180,50 +207,71 @@ export function Roads() {
         // Skip very short segments (artifacts)
         if (length < 1) return null;
 
+        // Choose asphalt variant per segment for subtle variation
+        const isDarkSegment = (road.originalIdx + idx) % 3 === 0;
+        const baseMat = isDarkSegment ? roadMaterialDark : roadMaterial;
+
         return (
           <group key={`roadseg-${idx}`} position={[centerX, 0.02, centerZ]} rotation={[0, -angle, 0]}>
-            {/* Asphalt base - Y 0.02 */}
+            {/* Asphalt base - Y 0.02, avoid z-fighting with ground -0.05 */}
             <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
               <planeGeometry args={[length, road.width]} />
-              <primitive object={roadMaterial} attach="material" />
+              <primitive object={baseMat} attach="material" />
             </mesh>
             
-            {/* Asphalt variation - slightly above */}
-            {Array.from({ length: 2 }).map((_, pIdx) => (
-              <mesh 
-                key={`patch-${idx}-${pIdx}`}
-                position={[(Math.random() - 0.5) * length * 0.7, 0.006, (Math.random() - 0.5) * road.width * 0.5]}
-                rotation={[-Math.PI / 2, 0, Math.random() * 0.5]}
-                receiveShadow
-              >
-                <planeGeometry args={[2 + Math.random() * 3, 0.8 + Math.random() * 1.5]} />
-                <primitive object={asphaltPatchMat} attach="material" />
-              </mesh>
-            ))}
+            {/* Asphalt variation - subtle patches, not noisy, slightly above base */}
+            {Array.from({ length: 3 }).map((_, pIdx) => {
+              const isLight = pIdx === 2;
+              return (
+                <mesh 
+                  key={`patch-${idx}-${pIdx}`}
+                  position={[(Math.random() - 0.5) * length * 0.6, 0.007 + pIdx*0.001, (Math.random() - 0.5) * road.width * 0.4]}
+                  rotation={[-Math.PI / 2, 0, Math.random() * 0.3]}
+                  receiveShadow
+                >
+                  <planeGeometry args={[1.5 + Math.random() * 2.5, 0.6 + Math.random() * 1.2]} />
+                  <primitive object={isLight ? asphaltPatchLight : asphaltPatchMat} attach="material" />
+                </mesh>
+              );
+            })}
             
-            {/* Sidewalks - 3m wide, at Y 0.12 (0.02+0.10) to avoid coplanar with road */}
-            {/* Only generate sidewalk if segment is long enough (>4m) */}
+            {/* Sidewalks - 2-4m wide (here 3m), at Y 0.12 (0.02+0.10) to avoid coplanar with road */}
+            {/* Concrete/paving variation, curb distinguishable, no coplanar */}
             {length > 4 && (
               <>
                 <group position={[0, 0.10, road.width / 2 + 1.5]}>
                   <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
                     <planeGeometry args={[length, 3]} />
-                    <primitive object={road.originalIdx % 2 === 0 ? sidewalkMaterial : sidewalkDark} attach="material" />
+                    <primitive object={road.originalIdx % 2 === 0 ? sidewalkMaterial : (idx % 2 === 0 ? sidewalkDark : sidewalkLight)} attach="material" />
                   </mesh>
+                  {/* Curb - 0.18 high, 0.25 thick, Y 0.07 above sidewalk base, distinguishable */}
                   <mesh receiveShadow position={[0, 0.07, -1.5]}>
                     <boxGeometry args={[length, 0.18, 0.25]} />
-                    <primitive object={curbMaterial} attach="material" />
+                    <primitive object={idx % 2 === 0 ? curbMaterial : curbDark} attach="material" />
                   </mesh>
+                  {/* Paving lines subtle */}
+                  {length > 8 && Array.from({ length: Math.floor(length / 3) }).map((_, li) => (
+                    <mesh key={`pave-${idx}-a-${li}`} position={[-length/2 + li*3 + 1.5, 0.012, 0]} rotation={[-Math.PI/2, 0, 0]}>
+                      <planeGeometry args={[0.02, 3]} />
+                      <meshStandardMaterial color="#7a7a7a" transparent opacity={0.15} />
+                    </mesh>
+                  ))}
                 </group>
                 <group position={[0, 0.10, -road.width / 2 - 1.5]}>
                   <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
                     <planeGeometry args={[length, 3]} />
-                    <primitive object={road.originalIdx % 2 === 0 ? sidewalkDark : sidewalkMaterial} attach="material" />
+                    <primitive object={road.originalIdx % 2 === 0 ? sidewalkDark : (idx % 2 === 0 ? sidewalkLight : sidewalkMaterial)} attach="material" />
                   </mesh>
                   <mesh receiveShadow position={[0, 0.07, 1.5]}>
                     <boxGeometry args={[length, 0.18, 0.25]} />
-                    <primitive object={curbMaterial} attach="material" />
+                    <primitive object={idx % 2 === 0 ? curbDark : curbMaterial} attach="material" />
                   </mesh>
+                  {length > 8 && Array.from({ length: Math.floor(length / 3) }).map((_, li) => (
+                    <mesh key={`pave-${idx}-b-${li}`} position={[-length/2 + li*3 + 1.5, 0.012, 0]} rotation={[-Math.PI/2, 0, 0]}>
+                      <planeGeometry args={[0.02, 3]} />
+                      <meshStandardMaterial color="#7a7a7a" transparent opacity={0.15} />
+                    </mesh>
+                  ))}
                 </group>
               </>
             )}
@@ -280,27 +328,28 @@ export function Roads() {
         );
       })}
 
-      {/* Intersections - single mesh per crossing, Y 0.025 slightly above road 0.02 to avoid z-fighting via real offset */}
+      {/* Intersections - single mesh per crossing, Y 0.026 slightly above road 0.02 to avoid z-fighting via real offset, not coplanar */}
       {INTERSECTIONS.map(([x, z], idx) => (
-        <group key={`inter-${idx}`} position={[x, 0.025, z]}>
+        <group key={`inter-${idx}`} position={[x, 0.026, z]}>
           <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[INTERSECTION_SIZE, INTERSECTION_SIZE]} />
-            <primitive object={roadMaterial} attach="material" />
+            <primitive object={idx % 2 === 0 ? roadMaterial : roadMaterialDark} attach="material" />
           </mesh>
-          {/* Crosswalks - 4 directions, at Y 0.05 above intersection */}
+          {/* Crosswalks - 4 directions, at Y 0.04 above intersection, avoid overlapping lane markings */}
           {[0, 90, 180, 270].map((rot, rIdx) => (
             <group key={`cross-${idx}-${rIdx}`} rotation={[0, (rot * Math.PI) / 180, 0]}>
-              <group position={[0, 0.03, 6.5]}>
-                {Array.from({ length: 7 }).map((_, i) => (
-                  <mesh key={`zebra-${i}`} position={[i * 0.9 - 2.7, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                    <planeGeometry args={[0.35, 2.8]} />
-                    <meshStandardMaterial color="#f0f0f0" roughness={0.8} />
+              <group position={[0, 0.04, 6.8]}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <mesh key={`zebra-${i}`} position={[i * 0.85 - 2.125, 0.015, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                    <planeGeometry args={[0.32, 2.6]} />
+                    <meshStandardMaterial color="#e8e8e8" roughness={0.75} />
                   </mesh>
                 ))}
               </group>
-              <mesh position={[0, 0.03, 5]} rotation={[-Math.PI / 2, 0, 0]}>
-                <planeGeometry args={[10, 0.3]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.8} />
+              {/* Stop lines - white, not overlapping center dashed */}
+              <mesh position={[0, 0.035, 5.2]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[INTERSECTION_SIZE - 1, 0.25]} />
+                <meshStandardMaterial color="#f5f5f5" roughness={0.7} />
               </mesh>
             </group>
           ))}

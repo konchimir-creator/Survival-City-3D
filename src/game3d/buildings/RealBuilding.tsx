@@ -2,10 +2,44 @@
 import React, { Suspense, useEffect, useMemo, useState, useRef } from 'react';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { BuildingDef } from '@/game/world/types';
 import { computeBuildingDimensions, logBuildingDimensions } from './buildingModelUtils';
 import { BUILDING_ASSETS } from './buildingAssetRegistry';
+
+function AbandonedEntranceLight({ frontZ }: { frontZ: number }) {
+  const lightRef = useRef<THREE.PointLight>(null);
+  const emissiveRef = useRef<THREE.MeshStandardMaterial>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame(() => {
+    try {
+      const tod = (window as any).__timeOfDay || 'day';
+      const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
+      const camPos = (window as any).__cameraPosition as THREE.Vector3;
+      let near = true;
+      if (camPos && groupRef.current) {
+        const worldPos = new THREE.Vector3();
+        groupRef.current.getWorldPosition(worldPos);
+        near = worldPos.distanceTo(camPos) < 45;
+      }
+      if (lightRef.current) {
+        lightRef.current.intensity = isNight && near ? 4.5 : 0;
+        if (isNight && near) (window as any).__activeLights = ((window as any).__activeLights || 0) + 1;
+      }
+      if (emissiveRef.current) {
+        emissiveRef.current.emissiveIntensity = isNight ? 0.7 : 0.15;
+      }
+    } catch {}
+  });
+  return (
+    <group ref={groupRef as any} position={[0, 2.2, frontZ + 0.4]}>
+      <mesh castShadow><boxGeometry args={[0.22, 0.09, 0.16]} /><meshStandardMaterial color="#4a4a4a" roughness={0.7} metalness={0.3} /></mesh>
+      <mesh position={[0, -0.12, 0.08]}><sphereGeometry args={[0.08, 8, 8]} /><meshStandardMaterial ref={emissiveRef as any} color="#ffcc88" emissive="#ffaa44" emissiveIntensity={0.3} /></mesh>
+      <pointLight ref={lightRef as any} position={[0, -0.1, 0.35]} intensity={0} distance={12} color="#ffcc88" decay={2} />
+    </group>
+  );
+}
 
 // ErrorBoundary to prevent GLB crash -> black screen
 class BuildingErrorBoundary extends React.Component<{ fallback: React.ReactNode, children: React.ReactNode, url: string }, { hasError: boolean, error?: any }> {
@@ -28,10 +62,14 @@ class BuildingErrorBoundary extends React.Component<{ fallback: React.ReactNode,
   }
 }
 
-function useBuildingGLBExists(url: string) {
+function useBuildingGLBExists(url: string, enabled: boolean = true) {
   const [exists, setExists] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setExists(null);
+      return;
+    }
     let cancelled = false;
     async function check() {
       try {
@@ -70,7 +108,7 @@ function useBuildingGLBExists(url: string) {
     }
     check();
     return () => { cancelled = true; };
-  }, [url]);
+  }, [url, enabled]);
 
   return exists;
 }
@@ -529,9 +567,57 @@ function ProceduralAbandonedFallback({ def }: { def: BuildingDef }) {
 }
 
 export function RealBuilding({ url, def, fallback, assetId }: { url: string; def: BuildingDef; fallback?: React.ReactNode; assetId?: string }) {
-  const exists = useBuildingGLBExists(url);
   const fallbackContent = fallback || <ProceduralAbandonedFallback def={def} />;
   const resolvedAssetId = assetId || getAssetIdFromUrl(url);
+
+  // Performance: avoid loading ~48MB GLB if far from player (>90m), use fallback until near
+  // This prevents 95MB simultaneous download at startup
+  const [isNear, setIsNear] = useState(false);
+  const [checkedNear, setCheckedNear] = useState(false);
+
+  useEffect(() => {
+    let interval: any;
+    const checkDistance = () => {
+      try {
+        const playerPos = (window as any).__cameraPosition as THREE.Vector3;
+        if (!playerPos) {
+          const storePos = (window as any).__playerPos || (window as any).__playerSpawn;
+          if (storePos) {
+            const dx = def.position[0] - (storePos.x || storePos[0] || 0);
+            const dz = def.position[2] - (storePos.z || storePos[2] || 0);
+            const dist = Math.sqrt(dx*dx + dz*dz);
+            if (dist < 90) {
+              setIsNear(true);
+              setCheckedNear(true);
+              clearInterval(interval);
+            } else if (!checkedNear) {
+              setCheckedNear(true);
+            }
+          }
+          return;
+        }
+        const dx = def.position[0] - playerPos.x;
+        const dz = def.position[2] - playerPos.z;
+        const dist = Math.sqrt(dx*dx + dz*dz);
+        if (dist < 90) {
+          if (!isNear) {
+            console.log(`[RealBuilding] ${resolvedAssetId} now near player dist ${dist.toFixed(1)}m, will load GLB`);
+          }
+          setIsNear(true);
+        }
+      } catch {}
+    };
+    checkDistance();
+    interval = setInterval(checkDistance, 1000);
+    return () => clearInterval(interval);
+  }, [def.position, isNear, checkedNear, resolvedAssetId]);
+
+  const exists = useBuildingGLBExists(url, isNear);
+
+  // If not near yet, show fallback to avoid heavy initial download
+  if (!isNear) {
+    return <>{fallbackContent}</>;
+  }
 
   if (exists === null) {
     console.log(`[RealBuilding] Checking existence for ${url}...`);
@@ -631,6 +717,8 @@ export function AbandonedHouseReal({ def }: { def: BuildingDef }) {
       <CuboidCollider args={[0.12, 1.2, 1.0]} position={[1.2, 1.2, halfD - 1.2]} />
 
       <RealBuilding url={url} def={def} assetId="abandoned_house_01" />
+
+      <AbandonedEntranceLight frontZ={frontZ} />
 
       {showDebug && (
         <group>
