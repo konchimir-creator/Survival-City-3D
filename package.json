@@ -1,0 +1,36 @@
+{
+  "name": "survival-city-3d",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000 -H 0.0.0.0",
+    "build": "next build",
+    "start": "next start -p 3000 -H 0.0.0.0",
+    "lint": "next lint",
+    "sim": "tsx scripts/sim.ts"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "0.15.1",
+    "@react-three/drei": "9.105.6",
+    "@react-three/fiber": "8.15.19",
+    "@react-three/rapier": "1.5.0",
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.160.1",
+    "zustand": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "20.11.30",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@types/three": "0.160.0",
+    "autoprefixer": "^10.6.1",
+    "eslint": "8.57.0",
+    "eslint-config-next": "14.2.5",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.1",
+    "tsx": "4.7.1",
+    "typescript": "5.4.5"
+  }
+}
