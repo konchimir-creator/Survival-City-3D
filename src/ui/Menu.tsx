@@ -36,6 +36,20 @@ export function Menu() {
               Сохранить игру
             </button>
 
+            <button
+              onClick={() => {
+                (window as any).__cameraYaw = 0;
+                (window as any).__cameraPitch = 0.25;
+                (window as any).__cameraDistance = 4.5;
+                // Also reset via event
+                window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyR' }));
+                setOpen(false);
+              }}
+              className="w-full py-3 bg-blue-800/50 hover:bg-blue-700/50 rounded text-sm"
+            >
+              Сбросить камеру [R]
+            </button>
+
             <div className="bg-[#2a2a2a] rounded p-4">
               <h3 className="font-bold mb-3">Графика</h3>
               <div className="flex gap-2">
@@ -61,12 +75,12 @@ export function Menu() {
             <div className="bg-[#2a2a2a] rounded p-4">
               <h3 className="font-bold mb-2">Управление</h3>
               <div className="text-xs text-gray-400 space-y-1">
-                <div>WASD - движение</div>
-                <div>Shift - бег</div>
-                <div>Мышь - камера (клик для захвата)</div>
-                <div>Колесо - зум</div>
-                <div>E - взаимодействие</div>
+                <div>WASD - движение (event.code, не зависит от раскладки)</div>
+                <div>Shift - бег | R - сброс камеры</div>
+                <div>Мышь - камера (клик для захвата) | Колесо - зум</div>
+                <div>E - взаимодействие | F3 - дебаг</div>
                 <div>I - инвентарь, C - персонаж, M - карта</div>
+                <div className="text-[10px] mt-2 text-yellow-600">SAFE_SPAWN [15,2,15] - открытая площадь, 5м от стен</div>
               </div>
             </div>
 

@@ -7,10 +7,11 @@ import { InventoryItem, Equipment, DEFAULT_EQUIPMENT, getMaxWeight } from '@/gam
 import { JobId, JOBS, JobProgress } from '@/game/jobs/types';
 import { TimeState, WeatherState, DEFAULT_TIME, DEFAULT_WEATHER } from '@/game/time/types';
 import { SAVE_VERSION, SAVE_KEY, SaveData } from '@/game/save/types';
+import { BUILDINGS } from '@/game/world/types';
 
 interface PlayerState {
   position: [number, number, number];
-  rotation: number; // yaw in radians
+  rotation: number;
   stats: CharacterStats;
   skills: CharacterSkills;
   attributes: CharacterAttributes;
@@ -25,18 +26,15 @@ interface SettingsState {
 }
 
 interface GameStore {
-  // Player
   player: PlayerState;
   setPlayerPosition: (pos: [number, number, number]) => void;
   setPlayerRotation: (rot: number) => void;
   updateStats: (delta: Partial<CharacterStats>) => void;
   
-  // Economy
   economy: EconomyState;
   addCash: (amount: number) => void;
   spendCash: (amount: number) => boolean;
   
-  // Inventory
   inventory: InventoryItem[];
   equipment: Equipment;
   addItem: (defId: string, quantity?: number) => boolean;
@@ -46,20 +44,17 @@ interface GameStore {
   getInventoryWeight: () => number;
   getMaxWeight: () => number;
   
-  // Time
   time: TimeState;
   weather: WeatherState;
   advanceTime: (deltaMinutes: number) => void;
   setWeather: (type: WeatherState['type']) => void;
   
-  // Jobs
   job: JobProgress;
   setJob: (jobId: JobId) => void;
   startWork: () => void;
   completeWorkTask: () => void;
   finishShift: () => void;
   
-  // World
   currentInteraction: { id: string; label: string; labelRu: string; type: string } | null;
   setInteraction: (interaction: GameStore['currentInteraction']) => void;
   isInShopInterior: boolean;
@@ -76,15 +71,12 @@ interface GameStore {
   dialogData: { npcId: string; name: string; text: string } | null;
   setDialog: (data: { npcId: string; name: string; text: string } | null) => void;
   
-  // Settings
   settings: SettingsState;
   setGraphics: (g: SettingsState['graphics']) => void;
   
-  // Game loop
   lastUpdate: number;
   tick: (deltaTime: number) => void;
   
-  // Save/Load
   saveGame: () => void;
   loadGame: () => boolean;
   newGame: () => void;
@@ -95,16 +87,59 @@ function createId() {
   return Math.random().toString(36).substring(2, 9);
 }
 
+// SAFE_SPAWN - guaranteed open area, 5m from walls, 5m from trees
+// Chosen at [15,2,15] - between roads, away from buildings
+export const SAFE_SPAWN: [number, number, number] = [15, 2, 15];
+const WORLD_BOUNDS = 200;
+
+function isValidPosition(pos: any): boolean {
+  if (!pos || !Array.isArray(pos) || pos.length !== 3) return false;
+  const [x, y, z] = pos;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return false;
+  if (Math.abs(x) > WORLD_BOUNDS || Math.abs(z) > WORLD_BOUNDS) return false;
+  if (y < -10 || y > 50) return false;
+  if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z)) return false;
+  
+  // Check if inside building
+  for (const b of BUILDINGS) {
+    const halfX = b.size[0]/2 + 2; // +2 margin
+    const halfY = b.size[1]/2 + 2;
+    const halfZ = b.size[2]/2 + 2;
+    if (
+      Math.abs(x - b.position[0]) < halfX &&
+      Math.abs(y - b.position[1] - halfY) < halfY &&
+      Math.abs(z - b.position[2]) < halfZ
+    ) {
+      console.warn(`[SpawnValidation] Position ${x},${y},${z} inside building ${b.id}`);
+      return false;
+    }
+  }
+  
+  return true;
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
   player: {
-    position: [0, 1, 0],
+    position: [...SAFE_SPAWN] as [number, number, number],
     rotation: 0,
     stats: { ...DEFAULT_STATS },
     skills: { ...DEFAULT_SKILLS },
     attributes: { ...DEFAULT_ATTRIBUTES },
   },
-  setPlayerPosition: (pos) => set((s) => ({ player: { ...s.player, position: pos } })),
-  setPlayerRotation: (rot) => set((s) => ({ player: { ...s.player, rotation: rot } })),
+  setPlayerPosition: (pos) => {
+    if (!isValidPosition(pos)) {
+      console.warn('[setPlayerPosition] Invalid pos, using SAFE_SPAWN', pos);
+      pos = [...SAFE_SPAWN] as [number, number, number];
+    }
+    set((s) => ({ player: { ...s.player, position: pos } }));
+  },
+  setPlayerRotation: (rot) => {
+    if (!Number.isFinite(rot)) {
+      console.warn('[setPlayerRotation] Invalid rot', rot);
+      rot = 0;
+    }
+    set((s) => ({ player: { ...s.player, rotation: rot } }));
+  },
   updateStats: (delta) => set((s) => ({
     player: {
       ...s.player,
@@ -143,7 +178,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (currentWeight + additionalWeight > maxWeight) {
       return false;
     }
-    // Check if stackable exists
     const existing = inventory.find((i) => i.defId === defId);
     if (existing) {
       set({
@@ -187,19 +221,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return true;
   },
   useItem: (instanceId) => {
-    const { inventory, player } = get();
+    const { inventory } = get();
     const item = inventory.find((i) => i.id === instanceId);
     if (!item) return false;
-    const statsDelta: Partial<CharacterStats> = {};
-    if (item.hunger) statsDelta.hunger = player.stats.hunger + item.hunger;
-    if (item.thirst) statsDelta.thirst = player.stats.thirst + item.thirst;
-    if (item.health) statsDelta.health = player.stats.health + item.health;
-    if (item.energy) statsDelta.energy = player.stats.energy + item.energy;
-    // Clamp in updateStats will happen? Actually we pass absolute? Let's fix: we pass delta as absolute values merged
-    // But updateStats expects absolute final? We implemented as merge then clamp. So we need to calculate final.
-    // Actually we already did player.stats.hunger + item.hunger, that's final.
-    // For updateStats we should pass absolute values, not delta.
-    // Let's use direct set for simplicity
     set((s) => ({
       player: {
         ...s.player,
@@ -261,21 +285,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   completeWorkTask: () => set((s) => {
     const newCarried = s.job.boxesCarried + 1;
     const progress = (newCarried / s.job.boxesTotal) * 100;
-    if (newCarried >= s.job.boxesTotal) {
-      // Will finish on next call? Actually auto finish
-      return {
-        job: { ...s.job, boxesCarried: newCarried, shiftProgress: progress },
-      };
-    }
     return {
       job: { ...s.job, boxesCarried: newCarried, shiftProgress: progress },
     };
   }),
   finishShift: () => {
-    const { job, player } = get();
+    const { job } = get();
     const def = JOBS[job.currentJob];
     if (!def) return;
-    // Reward
     set((s) => ({
       economy: { ...s.economy, cash: s.economy.cash + def.salary },
       player: {
@@ -288,9 +305,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         },
       },
       job: { ...s.job, isWorking: false, shiftProgress: 100, boxesCarried: 0 },
-      time: { ...s.time, minuteOfDay: s.time.minuteOfDay + 240, day: s.time.day }, // +4 hours
+      time: { ...s.time, minuteOfDay: s.time.minuteOfDay + 240, day: s.time.day },
     }));
-    // Advance day if needed
     const { time } = get();
     if (time.minuteOfDay >= 1440) {
       set((s) => ({
@@ -319,22 +335,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     graphics: 'medium',
     mouseSensitivity: 1,
     volume: 0.7,
-    fov: 75,
+    fov: 65,
     showFPS: false,
   },
   setGraphics: (g) => set((s) => ({ settings: { ...s.settings, graphics: g } })),
 
   lastUpdate: Date.now(),
   tick: (deltaTime) => {
-    const { time, player } = get();
+    const { time } = get();
     if (time.isPaused) return;
-    // Advance time
     const deltaMinutes = (deltaTime / 1000) * time.timeScale;
     get().advanceTime(deltaMinutes);
 
-    // Decay stats slowly
-    // Hunger, thirst decrease over time, energy decreases if not sleeping
-    const decayRate = deltaMinutes * 0.02; // per game minute
+    const decayRate = deltaMinutes * 0.02;
     set((s) => ({
       player: {
         ...s.player,
@@ -347,7 +360,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       },
     }));
 
-    // Health affected by hunger/thirst
     const { player: updatedPlayer } = get();
     if (updatedPlayer.stats.hunger <= 0 || updatedPlayer.stats.thirst <= 0) {
       set((s) => ({
@@ -361,7 +373,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }));
     }
 
-    // Random weather changes rarely
     if (Math.random() < 0.0001) {
       const types: WeatherState['type'][] = ['clear', 'cloudy', 'rain'];
       const newType = types[Math.floor(Math.random() * types.length)];
@@ -371,6 +382,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   saveGame: () => {
     const state = get();
+    // Only save player pos/rot, not camera absolute
+    // Camera yaw/pitch/distance saved separately via globals
     const data: SaveData = {
       version: SAVE_VERSION,
       timestamp: Date.now(),
@@ -397,6 +410,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+      // Also save camera yaw/pitch/distance separately
+      const camYaw = (typeof window !== 'undefined' ? (window as any).__cameraYaw : 0) || 0;
+      const camPitch = (typeof window !== 'undefined' ? (window as any).__cameraPitch : 0.25) || 0.25;
+      const camDist = (typeof window !== 'undefined' ? (window as any).__cameraDistance : 4.5) || 4.5;
+      localStorage.setItem(SAVE_KEY + '_camera', JSON.stringify({ yaw: camYaw, pitch: camPitch, distance: camDist }));
       console.log('Game saved', data);
     } catch (e) {
       console.error('Save failed', e);
@@ -409,13 +427,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const data: SaveData = JSON.parse(raw);
       if (data.version !== SAVE_VERSION) {
         console.warn('Save version mismatch, migrating');
-        // Simple migration: if old, just load what we can
       }
+
+      // Validate saved position
+      let savedPos = data.player.position;
+      let posValid = true;
+      if (!isValidPosition(savedPos)) {
+        console.warn('[loadGame] Invalid saved position, using SAFE_SPAWN', savedPos);
+        savedPos = [...SAFE_SPAWN] as [number, number, number];
+        posValid = false;
+      }
+
+      // Validate rotation
+      let savedRot = data.player.rotation;
+      if (!Number.isFinite(savedRot)) {
+        console.warn('[loadGame] Invalid rotation, reset to 0', savedRot);
+        savedRot = 0;
+      }
+
       set((s) => ({
         player: {
           ...s.player,
-          position: data.player.position || [0, 1, 0],
-          rotation: data.player.rotation || 0,
+          position: savedPos || [...SAFE_SPAWN] as [number, number, number],
+          rotation: savedRot || 0,
           stats: data.player.stats || s.player.stats,
           skills: data.player.skills || s.player.skills,
           attributes: data.player.attributes || s.player.attributes,
@@ -436,6 +470,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
           volume: data.settings?.volume ?? s.settings.volume,
         },
       }));
+
+      // Load camera settings separately, don't use old absolute camera pos
+      try {
+        const camRaw = localStorage.getItem(SAVE_KEY + '_camera');
+        if (camRaw) {
+          const camData = JSON.parse(camRaw);
+          if (Number.isFinite(camData.yaw)) (window as any).__cameraYaw = camData.yaw;
+          if (Number.isFinite(camData.pitch)) (window as any).__cameraPitch = Math.max(-0.15, Math.min(0.65, camData.pitch));
+          if (Number.isFinite(camData.distance)) (window as any).__cameraDistance = Math.max(2.5, Math.min(7, camData.distance));
+        }
+      } catch {}
+
+      // Store validation result for debug
+      (typeof window !== 'undefined' ? (window as any).__savedPosValid = posValid : null);
+
       return true;
     } catch (e) {
       console.error('Load failed', e);
@@ -445,7 +494,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   newGame: () => {
     set({
       player: {
-        position: [0, 1, 0],
+        position: [...SAFE_SPAWN] as [number, number, number],
         rotation: 0,
         stats: { ...DEFAULT_STATS },
         skills: { ...DEFAULT_SKILLS },
@@ -466,6 +515,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
     try {
       localStorage.removeItem(SAVE_KEY);
+      localStorage.removeItem(SAVE_KEY + '_camera');
     } catch {}
   },
   hasSave: () => {

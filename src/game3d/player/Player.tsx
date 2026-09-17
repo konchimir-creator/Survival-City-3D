@@ -40,15 +40,44 @@ export function Player() {
   
   useEffect(() => {
     if (rigidBodyRef.current) {
-      const safePos = playerPosition[0] === 0 && playerPosition[2] === 0 
-        ? { x: 5, y: 2, z: 5 } 
-        : { x: playerPosition[0], y: playerPosition[1], z: playerPosition[2] };
+      // SAFE_SPAWN [15,2,15] - open area 5m from walls/trees
+      const SAFE_SPAWN = { x: 15, y: 2, z: 15 };
+      let safePos = SAFE_SPAWN;
+      
+      // Validate current position from store
+      const [x, y, z] = playerPosition;
+      const isValid = Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) &&
+        Math.abs(x) < 200 && Math.abs(z) < 200 && y > -10 && y < 50;
+      
+      if (isValid && !(x === 0 && z === 0)) {
+        // Check not inside building (simple)
+        const buildings = [
+          { pos: [45, 0, -35], size: [18, 8, 14] },
+          { pos: [-50, 0, 70], size: [22, 10, 18] },
+          { pos: [-90, 0, 35], size: [30, 12, 25] },
+        ];
+        let inside = false;
+        for (const b of buildings) {
+          if (Math.abs(x - b.pos[0]) < b.size[0]/2 + 2 && Math.abs(z - b.pos[2]) < b.size[2]/2 + 2) {
+            inside = true;
+            break;
+          }
+        }
+        if (!inside) {
+          safePos = { x, y, z };
+        } else {
+          console.warn('[Player] Saved pos inside building, using SAFE_SPAWN', playerPosition);
+        }
+      } else {
+        console.log('[Player] Using SAFE_SPAWN', SAFE_SPAWN);
+      }
       
       try {
         rigidBodyRef.current.setTranslation(safePos, true);
         rigidBodyRef.current.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
         rigidBodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-        console.log('[Player] Spawn at', safePos);
+        console.log('[Player] Spawn at', safePos, 'valid:', isValid);
+        (window as any).__playerSpawn = safePos;
       } catch (e) {
         console.warn('[Player] Spawn failed', e);
       }

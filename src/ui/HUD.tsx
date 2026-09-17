@@ -12,20 +12,22 @@ function DebugOverlay() {
   useEffect(() => {
     const interval = setInterval(() => {
       const input = (window as any).__playerInput;
+      const camDebug = (window as any).__cameraDebug;
       const camPos = (window as any).__cameraPosition;
       const camTarget = (window as any).__cameraTarget;
-      const camDist = (window as any).__cameraDistance;
       const show = (window as any).__showDebug;
+      const savedValid = (window as any).__savedPosValid;
       
       setShowDebug(!!show);
-      if (input) {
+      if (input || camDebug) {
         setDebugData({
           input,
-          camPos: camPos ? { x: camPos.x.toFixed(1), y: camPos.y.toFixed(1), z: camPos.z.toFixed(1) } : null,
-          camTarget: camTarget ? { x: camTarget.x.toFixed(1), y: camTarget.y.toFixed(1), z: camTarget.z.toFixed(1) } : null,
-          camDist: camDist?.toFixed(1),
+          camDebug,
+          camPos: camPos ? { x: camPos.x.toFixed(2), y: camPos.y.toFixed(2), z: camPos.z.toFixed(2) } : null,
+          camTarget: camTarget ? { x: camTarget.x.toFixed(2), y: camTarget.y.toFixed(2), z: camTarget.z.toFixed(2) } : null,
           playerPos: player.position.map((v: number) => v.toFixed(2)),
           playerRot: (player.rotation * 180 / Math.PI).toFixed(1),
+          savedValid,
         });
       }
     }, 100);
@@ -35,26 +37,42 @@ function DebugOverlay() {
   if (!showDebug || !debugData) return null;
 
   return (
-    <div className="absolute top-20 left-4 bg-black/80 backdrop-blur-sm rounded-lg p-3 text-xs text-white border border-white/20 pointer-events-none font-mono min-w-[280px] z-50">
-      <div className="font-bold mb-2 text-yellow-400">DEBUG [F3]</div>
+    <div className="absolute top-20 left-4 bg-black/85 backdrop-blur-sm rounded-lg p-3 text-xs text-white border border-white/20 pointer-events-none font-mono min-w-[340px] z-50 max-h-[80vh] overflow-auto">
+      <div className="font-bold mb-2 text-yellow-400">DEBUG [F3] | R=Reset Camera</div>
       <div className="grid grid-cols-2 gap-1">
-        <div>W: {debugData.input.W ? 'true' : 'false'}</div>
-        <div>A: {debugData.input.A ? 'true' : 'false'}</div>
-        <div>S: {debugData.input.S ? 'true' : 'false'}</div>
-        <div>D: {debugData.input.D ? 'true' : 'false'}</div>
-        <div>Shift: {debugData.input.Shift ? 'true' : 'false'}</div>
-        <div>Grounded: {debugData.input.grounded ? 'true' : 'false'}</div>
+        <div>W: {debugData.input?.W ? 'true' : 'false'}</div>
+        <div>A: {debugData.input?.A ? 'true' : 'false'}</div>
+        <div>S: {debugData.input?.S ? 'true' : 'false'}</div>
+        <div>D: {debugData.input?.D ? 'true' : 'false'}</div>
+        <div>Shift: {debugData.input?.Shift ? 'true' : 'false'}</div>
+        <div>Grounded: {debugData.input?.grounded ? 'true' : 'false'}</div>
+        <div>JoyX: {debugData.input?.JoyX?.toFixed(2) || '0'}</div>
+        <div>JoyY: {debugData.input?.JoyY?.toFixed(2) || '0'}</div>
       </div>
       <div className="mt-2 border-t border-white/10 pt-2">
+        <div className="text-green-400 font-bold">Player:</div>
         <div>Pos: {debugData.playerPos[0]}, {debugData.playerPos[1]}, {debugData.playerPos[2]}</div>
-        <div>Vel: {debugData.input.vel[0].toFixed(2)}, {debugData.input.vel[1].toFixed(2)}, {debugData.input.vel[2].toFixed(2)}</div>
+        <div>Vel: {debugData.input?.vel ? `${debugData.input.vel[0].toFixed(2)},${debugData.input.vel[1].toFixed(2)},${debugData.input.vel[2].toFixed(2)}` : 'none'}</div>
         <div>Rot: {debugData.playerRot}°</div>
-        <div>CamDist: {debugData.camDist}m</div>
-        <div>CamPos: {debugData.camPos?.x}, {debugData.camPos?.y}, {debugData.camPos?.z}</div>
+        <div>SavedValid: {debugData.savedValid === undefined ? 'new' : debugData.savedValid ? 'true' : 'false'}</div>
       </div>
+      {debugData.camDebug && (
+        <div className="mt-2 border-t border-white/10 pt-2">
+          <div className="text-blue-400 font-bold">Camera:</div>
+          <div>Pos: {debugData.camDebug.cameraPos}</div>
+          <div>Target: {debugData.camDebug.targetPos}</div>
+          <div>Yaw: {debugData.camDebug.yaw} Pitch: {debugData.camDebug.pitch}</div>
+          <div>Dist: desired {debugData.camDebug.desiredDistance} cur {debugData.camDebug.currentDistance} final {debugData.camDebug.finalDistance}</div>
+          <div>Collision: {debugData.camDebug.collisionEnabled ? 'ON' : 'OFF'} Hit: {debugData.camDebug.collisionHit ? 'YES' : 'NO'}</div>
+          <div>HitDist: {debugData.camDebug.hitDistance} | {debugData.camDebug.hitInfo}</div>
+          <div>Initialized: {debugData.camDebug.initialized ? 'true' : 'false'}</div>
+        </div>
+      )}
       <div className="mt-2 text-[10px] text-gray-400">
-        Using event.code (KeyW/A/S/D) - layout independent<br/>
-        Walk 3.5 m/s, Run 6.0 m/s, normalized diagonal
+        SAFE_SPAWN [15,2,15] - open area 5m from walls/trees<br/>
+        Camera: target player+1.4m, offset [0,2.2,5] yaw/pitch, FOV 62<br/>
+        Collision excludes player (0.5m offset, ignore toi&lt;0.5)<br/>
+        MIN_DIST 1.5m, pitch -0.15..0.65, dist 2.5..7
       </div>
     </div>
   );
