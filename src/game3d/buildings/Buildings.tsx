@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { BUILDINGS, BuildingDef } from '@/game/world/types';
 import { AbandonedHouseReal } from './RealBuilding';
+import { ShowcaseResidential } from './ShowcaseResidential';
 
 function Building({ def }: { def: BuildingDef }) {
   const { position, size, type, rotation = 0 } = def;
@@ -362,9 +363,13 @@ export function Buildings() {
   return (
     <group>
       {BUILDINGS.map((b) => {
-        // Replace one procedural abandoned house with real GLB if exists, fallback procedural
+        // Real abandoned GLB
         if (b.id === 'abandoned_1') {
           return <AbandonedHouseReal key={b.id} def={b} />;
+        }
+        // Showcase realistic residential - one quality reference building
+        if (b.id === 'residential_2') {
+          return <ShowcaseResidential key={b.id} def={b} />;
         }
         return <Building key={b.id} def={b} />;
       })}
