@@ -429,13 +429,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
         console.warn('Save version mismatch, migrating');
       }
 
-      // Validate saved position
-      let savedPos = data.player.position;
-      let posValid = true;
-      if (!isValidPosition(savedPos)) {
-        console.warn('[loadGame] Invalid saved position, using SAFE_SPAWN', savedPos);
-        savedPos = [...SAFE_SPAWN] as [number, number, number];
-        posValid = false;
+      // DIAGNOSTIC FIX: completely ignore old save position, force SAFE_SPAWN [15,2,15] for visibility test
+      // Per task 5: для теста полностью игнорировать старый save
+      let savedPos = [...SAFE_SPAWN] as [number, number, number];
+      let posValid = false; // forced
+      const originalSavedPos = data.player.position;
+      console.warn(`[loadGame] DIAGNOSTIC: ignoring saved pos ${originalSavedPos} -> forced SAFE_SPAWN ${SAFE_SPAWN}`);
+      // Still check if original was valid for debug, but don't use it
+      if (isValidPosition(originalSavedPos)) {
+        // Log but still force SAFE_SPAWN for this fix
+        console.log('[loadGame] Original saved pos was valid but ignored for diagnostic');
       }
 
       // Validate rotation

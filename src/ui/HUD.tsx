@@ -17,9 +17,15 @@ function DebugOverlay() {
       const camTarget = (window as any).__cameraTarget;
       const show = (window as any).__showDebug;
       const savedValid = (window as any).__savedPosValid;
+      const playerMounted = (window as any).__playerMounted;
+      const bodyExists = (window as any).__playerBodyExists;
+      const playerVisible = (window as any).__playerVisible;
+      const playerSpawn = (window as any).__playerSpawn;
+      const playerTransform = (window as any).__playerTransformRef?.current;
+      const cameraCollision = (window as any).__cameraCollisionEnabled;
       
       setShowDebug(!!show);
-      if (input || camDebug) {
+      if (show) {
         setDebugData({
           input,
           camDebug,
@@ -28,6 +34,19 @@ function DebugOverlay() {
           playerPos: player.position.map((v: number) => v.toFixed(2)),
           playerRot: (player.rotation * 180 / Math.PI).toFixed(1),
           savedValid,
+          mounted: playerMounted,
+          bodyExists,
+          visible: playerVisible,
+          spawn: playerSpawn,
+          transform: playerTransform ? {
+            x: playerTransform.position.x.toFixed(2),
+            y: playerTransform.position.y.toFixed(2),
+            z: playerTransform.position.z.toFixed(2),
+            vx: playerTransform.velocity.x.toFixed(2),
+            vy: playerTransform.velocity.y.toFixed(2),
+            vz: playerTransform.velocity.z.toFixed(2),
+          } : null,
+          camCollision: cameraCollision,
         });
       }
     }, 100);
@@ -36,43 +55,93 @@ function DebugOverlay() {
 
   if (!showDebug || !debugData) return null;
 
+  const distCamToPlayer = debugData.camPos && debugData.transform ? 
+    Math.sqrt(
+      Math.pow(parseFloat(debugData.camPos.x) - parseFloat(debugData.transform.x), 2) +
+      Math.pow(parseFloat(debugData.camPos.y) - parseFloat(debugData.transform.y), 2) +
+      Math.pow(parseFloat(debugData.camPos.z) - parseFloat(debugData.transform.z), 2)
+    ).toFixed(2) : 'N/A';
+
   return (
-    <div className="absolute top-20 left-4 bg-black/85 backdrop-blur-sm rounded-lg p-3 text-xs text-white border border-white/20 pointer-events-none font-mono min-w-[340px] z-50 max-h-[80vh] overflow-auto">
-      <div className="font-bold mb-2 text-yellow-400">DEBUG [F3] | R=Reset Camera</div>
-      <div className="grid grid-cols-2 gap-1">
-        <div>W: {debugData.input?.W ? 'true' : 'false'}</div>
-        <div>A: {debugData.input?.A ? 'true' : 'false'}</div>
-        <div>S: {debugData.input?.S ? 'true' : 'false'}</div>
-        <div>D: {debugData.input?.D ? 'true' : 'false'}</div>
-        <div>Shift: {debugData.input?.Shift ? 'true' : 'false'}</div>
-        <div>Grounded: {debugData.input?.grounded ? 'true' : 'false'}</div>
+    <div className="absolute top-20 left-4 bg-black/90 backdrop-blur-sm rounded-lg p-3 text-xs text-white border border-white/20 pointer-events-auto font-mono min-w-[380px] z-50 max-h-[85vh] overflow-auto">
+      <div className="font-bold mb-2 text-yellow-400">DEBUG [F3] | R=Reset Camera | TEST MOVE button below</div>
+      
+      <div className="mb-2 p-2 bg-white/10 rounded">
+        <div className="text-green-300 font-bold">Player Existence:</div>
+        <div>Player mounted: {debugData.mounted ? 'YES' : 'NO'}</div>
+        <div>RigidBody: {debugData.bodyExists ? 'YES' : 'NO'}</div>
+        <div>Player visible: {debugData.visible ? 'YES' : 'NO'}</div>
+        <div>Spawn: {debugData.spawn ? `${debugData.spawn.x},${debugData.spawn.y},${debugData.spawn.z}` : 'none'}</div>
+        <div>Camera collision: {debugData.camCollision === false ? 'DISABLED (fix)' : debugData.camCollision ? 'ON' : 'OFF'}</div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1 mb-2">
+        <div>W: {debugData.input?.W ? 'TRUE' : 'FALSE'}</div>
+        <div>A: {debugData.input?.A ? 'TRUE' : 'FALSE'}</div>
+        <div>S: {debugData.input?.S ? 'TRUE' : 'FALSE'}</div>
+        <div>D: {debugData.input?.D ? 'TRUE' : 'FALSE'}</div>
+        <div>Shift: {debugData.input?.Shift ? 'TRUE' : 'FALSE'}</div>
+        <div>Grounded: {debugData.input?.grounded ? 'TRUE' : 'FALSE'}</div>
         <div>JoyX: {debugData.input?.JoyX?.toFixed(2) || '0'}</div>
         <div>JoyY: {debugData.input?.JoyY?.toFixed(2) || '0'}</div>
       </div>
+
       <div className="mt-2 border-t border-white/10 pt-2">
-        <div className="text-green-400 font-bold">Player:</div>
-        <div>Pos: {debugData.playerPos[0]}, {debugData.playerPos[1]}, {debugData.playerPos[2]}</div>
-        <div>Vel: {debugData.input?.vel ? `${debugData.input.vel[0].toFixed(2)},${debugData.input.vel[1].toFixed(2)},${debugData.input.vel[2].toFixed(2)}` : 'none'}</div>
+        <div className="text-green-400 font-bold">Position (REF = real body, Zustand = HUD):</div>
+        <div>REF Pos: {debugData.transform ? `${debugData.transform.x}, ${debugData.transform.y}, ${debugData.transform.z}` : 'none'}</div>
+        <div>Zustand Pos: {debugData.playerPos[0]}, {debugData.playerPos[1]}, {debugData.playerPos[2]}</div>
+        <div>Vel REF: {debugData.transform ? `${debugData.transform.vx},${debugData.transform.vy},${debugData.transform.vz}` : 'none'}</div>
+        <div>Vel Input: {debugData.input?.vel ? `${debugData.input.vel[0].toFixed(2)},${debugData.input.vel[1].toFixed(2)},${debugData.input.vel[2].toFixed(2)}` : 'none'}</div>
         <div>Rot: {debugData.playerRot}°</div>
-        <div>SavedValid: {debugData.savedValid === undefined ? 'new' : debugData.savedValid ? 'true' : 'false'}</div>
+        <div>SavedValid: {debugData.savedValid === undefined ? 'new/forced' : debugData.savedValid ? 'true' : 'false (forced SAFE_SPAWN)'}</div>
       </div>
+
       {debugData.camDebug && (
         <div className="mt-2 border-t border-white/10 pt-2">
           <div className="text-blue-400 font-bold">Camera:</div>
           <div>Pos: {debugData.camDebug.cameraPos}</div>
           <div>Target: {debugData.camDebug.targetPos}</div>
+          <div>CamTarget global: {debugData.camTarget ? `${debugData.camTarget.x},${debugData.camTarget.y},${debugData.camTarget.z}` : 'none'}</div>
           <div>Yaw: {debugData.camDebug.yaw} Pitch: {debugData.camDebug.pitch}</div>
           <div>Dist: desired {debugData.camDebug.desiredDistance} cur {debugData.camDebug.currentDistance} final {debugData.camDebug.finalDistance}</div>
+          <div>Dist cam-&gt;player: {distCamToPlayer}m {parseFloat(distCamToPlayer) > 20 ? '(HARD RESET NEEDED!)' : ''}</div>
           <div>Collision: {debugData.camDebug.collisionEnabled ? 'ON' : 'OFF'} Hit: {debugData.camDebug.collisionHit ? 'YES' : 'NO'}</div>
-          <div>HitDist: {debugData.camDebug.hitDistance} | {debugData.camDebug.hitInfo}</div>
+          <div>HitInfo: {debugData.camDebug.hitInfo}</div>
           <div>Initialized: {debugData.camDebug.initialized ? 'true' : 'false'}</div>
+          <div>Source: {debugData.camDebug.playerPos}</div>
         </div>
       )}
+
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => {
+            const fn = (window as any).__testMove;
+            if (fn) fn();
+            else console.warn('__testMove not ready');
+          }}
+          className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-bold"
+        >
+          TEST MOVE (1s forward)
+        </button>
+        <button
+          onClick={() => {
+            try {
+              localStorage.clear();
+              console.log('[DEBUG] localStorage cleared, reload');
+              window.location.reload();
+            } catch {}
+          }}
+          className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1.5 rounded text-xs"
+        >
+          CLEAR SAVE & RELOAD
+        </button>
+      </div>
+
       <div className="mt-2 text-[10px] text-gray-400">
-        SAFE_SPAWN [15,2,15] - open area 5m from walls/trees<br/>
-        Camera: target player+1.4m, offset [0,2.2,5] yaw/pitch, FOV 62<br/>
-        Collision excludes player (0.5m offset, ignore toi&lt;0.5)<br/>
-        MIN_DIST 1.5m, pitch -0.15..0.65, dist 2.5..7
+        DIAGNOSTIC MODE: simple world movement W=+Z S=-Z A=-X D=+X, no accel smoothing, no grounded raycast, no camera-relative, no collision<br/>
+        SAFE_SPAWN [15,2,15] forced, red pillar marker at spawn, player is humanoid + red cube fallback<br/>
+        Camera reads REF not Zustand, hard reset if &gt;20m, collision DISABLED<br/>
+        After fix: return camera-relative and enable collision in next commit
       </div>
     </div>
   );
@@ -210,8 +279,8 @@ export function HUD() {
       {/* Bottom left - controls hint */}
       <div className="absolute bottom-4 left-4 pointer-events-none">
         <div className="bg-black/40 backdrop-blur-sm rounded-lg px-3 py-2 text-xs text-gray-400 border border-white/5">
-          <div>WASD - движение (не зависит от раскладки) | Shift - бег | Мышь - камера | Колесо - зум | F3 - дебаг</div>
-          <div>E - действие | Esc - меню | Клик - захват мыши | Кроссовки влияют на скорость</div>
+          <div>WASD - движение (не зависит от раскладки) | Shift - бег | Мышь - камера | Колесо - зум | F3 - дебаг | R - reset camera</div>
+          <div>E - действие | Esc - меню | Клик - фокус + захват мыши | TEST MOVE в F3 меню</div>
         </div>
       </div>
 

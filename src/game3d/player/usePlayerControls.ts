@@ -26,47 +26,51 @@ export function usePlayerControls() {
 
   const mouseDeltaRef = useRef({ x: 0, y: 0 });
   const mouseButtonsRef = useRef({ left: false, right: false });
-  const debugToggleRef = useRef(false);
 
   useEffect(() => {
+    console.log('[Input] Controls initialized with event.code (layout independent) - window listeners, useRef, no rerender recreation');
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Use event.code to be independent of keyboard layout (ENG/RUS)
       const code = e.code;
+      const target = e.target as HTMLElement;
+      // Don't handle if typing in input/textarea
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+
+      // Use event.code for layout independence ENG/RUS
+      let isGameKey = false;
+
+      if (code === 'KeyW') { inputRef.current.forward = true; isGameKey = true; }
+      if (code === 'KeyS') { inputRef.current.backward = true; isGameKey = true; }
+      if (code === 'KeyA') { inputRef.current.left = true; isGameKey = true; }
+      if (code === 'KeyD') { inputRef.current.right = true; isGameKey = true; }
       
-      // Debug: F3 toggle
+      if (code === 'ArrowUp') { inputRef.current.forward = true; isGameKey = true; }
+      if (code === 'ArrowDown') { inputRef.current.backward = true; isGameKey = true; }
+      if (code === 'ArrowLeft') { inputRef.current.left = true; isGameKey = true; }
+      if (code === 'ArrowRight') { inputRef.current.right = true; isGameKey = true; }
+
+      if (code === 'ShiftLeft' || code === 'ShiftRight') { inputRef.current.run = true; isGameKey = true; }
+      if (code === 'Space') { inputRef.current.jump = true; }
+      if (code === 'KeyE') { inputRef.current.interact = true; }
+
       if (code === 'F3') {
         e.preventDefault();
         inputRef.current.debug = !inputRef.current.debug;
-        debugToggleRef.current = inputRef.current.debug;
-        // Also set global for HUD
         (window as any).__showDebug = inputRef.current.debug;
+        console.log(`[Input] F3 debug ${inputRef.current.debug ? 'ON' : 'OFF'}`);
         return;
       }
 
-      // Movement - using code
-      if (code === 'KeyW') inputRef.current.forward = true;
-      if (code === 'KeyS') inputRef.current.backward = true;
-      if (code === 'KeyA') inputRef.current.left = true;
-      if (code === 'KeyD') inputRef.current.right = true;
-      
-      // Also support Arrow keys as fallback
-      if (code === 'ArrowUp') inputRef.current.forward = true;
-      if (code === 'ArrowDown') inputRef.current.backward = true;
-      if (code === 'ArrowLeft') inputRef.current.left = true;
-      if (code === 'ArrowRight') inputRef.current.right = true;
-
-      if (code === 'ShiftLeft' || code === 'ShiftRight') inputRef.current.run = true;
-      if (code === 'Space') inputRef.current.jump = true;
-      if (code === 'KeyE') inputRef.current.interact = true;
-
-      // For compatibility, also check e.key lowercase for non-RUS but keep code as primary
-      // This helps if browser doesn't support code (unlikely)
-      const key = e.key.toLowerCase();
-      if (!code.startsWith('Key') && !code.startsWith('Arrow') && !code.startsWith('Shift') && !code.startsWith('Space')) {
-        if (key === 'w') inputRef.current.forward = true;
-        if (key === 's') inputRef.current.backward = true;
-        if (key === 'a') inputRef.current.left = true;
-        if (key === 'd') inputRef.current.right = true;
+      // Prevent default for game keys when menu closed to avoid page scroll
+      if (isGameKey) {
+        try {
+          const store = (window as any).__gameStore;
+          // Check if UI blocking - if not, prevent default for WASD/Arrows/Shift to avoid scrolling
+          // We don't have direct access to store here, so check global or just prevent for arrows/space
+          if (code.startsWith('Arrow') || code === 'Space') {
+            e.preventDefault();
+          }
+        } catch {}
       }
     };
 
@@ -81,15 +85,6 @@ export function usePlayerControls() {
       if (code === 'ShiftLeft' || code === 'ShiftRight') inputRef.current.run = false;
       if (code === 'Space') inputRef.current.jump = false;
       if (code === 'KeyE') inputRef.current.interact = false;
-
-      // Fallback
-      const key = e.key.toLowerCase();
-      if (key === 'w') inputRef.current.forward = false;
-      if (key === 's') inputRef.current.backward = false;
-      if (key === 'a') inputRef.current.left = false;
-      if (key === 'd') inputRef.current.right = false;
-      if (key === 'shift') inputRef.current.run = false;
-      if (key === ' ') inputRef.current.jump = false;
     };
 
     const handleBlur = () => {
@@ -120,6 +115,7 @@ export function usePlayerControls() {
       if (e.button === 2) mouseButtonsRef.current.right = false;
     };
 
+    // CRITICAL: listen on WINDOW, not canvas, so focus doesn't matter
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('blur', handleBlur);
@@ -133,8 +129,6 @@ export function usePlayerControls() {
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
-    console.log('[Input] Controls initialized with event.code (layout independent)');
-
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -143,8 +137,9 @@ export function usePlayerControls() {
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('visibilitychange', handleVisibility);
+      console.log('[Input] Cleanup listeners');
     };
-  }, []);
+  }, []); // Empty deps - never recreate listeners on render
 
   const consumeMouseDelta = () => {
     const delta = { ...mouseDeltaRef.current };
