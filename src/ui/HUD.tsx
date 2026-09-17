@@ -23,6 +23,10 @@ function DebugOverlay() {
       const playerSpawn = (window as any).__playerSpawn;
       const playerTransform = (window as any).__playerTransformRef?.current;
       const cameraCollision = (window as any).__cameraCollisionEnabled;
+      const playerRenderer = (window as any).__playerRenderer || 'PROCEDURAL';
+      const playerAnimation = (window as any).__playerAnimation || 'idle';
+      const animationSpeed = (window as any).__animationSpeed || '1.00';
+      const skeletonLoaded = (window as any).__skeletonLoaded;
       
       setShowDebug(!!show);
       if (show) {
@@ -47,6 +51,10 @@ function DebugOverlay() {
             vz: playerTransform.velocity.z.toFixed(2),
           } : null,
           camCollision: cameraCollision,
+          playerRenderer,
+          playerAnimation,
+          animationSpeed,
+          skeletonLoaded,
         });
       }
     }, 100);
@@ -73,6 +81,11 @@ function DebugOverlay() {
         <div>Player visible: {debugData.visible ? 'YES' : 'NO'}</div>
         <div>Spawn: {debugData.spawn ? `${debugData.spawn.x},${debugData.spawn.y},${debugData.spawn.z}` : 'none'}</div>
         <div>Camera collision: {debugData.camCollision === false ? 'DISABLED (fix)' : debugData.camCollision ? 'ON' : 'OFF'}</div>
+        <div className="mt-2 pt-2 border-t border-white/10">
+          <div className={debugData.playerRenderer === 'GLB' ? 'text-green-400 font-bold' : 'text-yellow-400 font-bold'}>Renderer: {debugData.playerRenderer} | Skeleton: {debugData.skeletonLoaded ? 'YES' : debugData.skeletonLoaded === false ? 'NO' : 'N/A (procedural)'} | Anim: {debugData.playerAnimation} x{debugData.animationSpeed}</div>
+          <div>VisualFeetY: {debugData.input?.visualFeetY || 'n/a'} | Move: {debugData.transform ? (Math.sqrt(parseFloat(debugData.transform.vx)**2 + parseFloat(debugData.transform.vz)**2)).toFixed(2)+' m/s' : 'n/a'}</div>
+          <div className={debugData.playerRenderer === 'GLB' ? 'text-green-300' : 'text-orange-300'}>{debugData.playerRenderer === 'GLB' ? 'GLB loaded ✓' : 'PROCEDURAL fallback - need player.glb'}</div>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-1 mb-2">

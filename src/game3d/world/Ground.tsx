@@ -12,9 +12,14 @@ export function Ground() {
     });
   }, []);
 
+  const asphaltBase = useMemo(() => new THREE.MeshStandardMaterial({ color: '#2a2a2e', roughness: 0.95, metalness: 0 }), []);
+  const concreteSlab = useMemo(() => new THREE.MeshStandardMaterial({ color: '#8a8a8a', roughness: 0.9, metalness: 0.02 }), []);
+  const concreteDark = useMemo(() => new THREE.MeshStandardMaterial({ color: '#6a6a6a', roughness: 0.92 }), []);
+  const asphaltPatch = useMemo(() => new THREE.MeshStandardMaterial({ color: '#1e1e22', roughness: 0.9, transparent: true, opacity: 0.6 }), []);
+
   return (
     <>
-      {/* GUARANTEED PHYSICAL FLOOR - independent of visual roads, no custom collisionGroups, no rotation, no scale */}
+      {/* GUARANTEED PHYSICAL FLOOR - FROZEN DO NOT CHANGE - CuboidCollider [150,0.25,150] pos [0,-0.25,0] */}
       <RigidBody type="fixed" colliders={false} position={[0, 0, 0]}>
         <CuboidCollider
           args={[150, 0.25, 150]}
@@ -22,11 +27,33 @@ export function Ground() {
         />
       </RigidBody>
 
-      {/* Visual ground - more natural, not just flat gray */}
+      {/* Visual ground - asphalt base */}
       <mesh receiveShadow position={[0, -0.02, 0]} rotation={[-Math.PI/2, 0, 0]}>
         <planeGeometry args={[500, 500]} />
-        <meshStandardMaterial color="#2a2a2a" roughness={1} metalness={0} />
+        <primitive object={asphaltBase} attach="material" />
       </mesh>
+
+      {/* Sidewalk variation - concrete slabs with cracks */}
+      {Array.from({ length: 20 }).map((_, i) => {
+        const x = (Math.random()-0.5)*300;
+        const z = (Math.random()-0.5)*300;
+        // Skip roads
+        if (Math.abs(x)<6 || Math.abs(z)<6 || Math.abs(x-60)<5 || Math.abs(x+70)<5 || Math.abs(z-60)<5 || Math.abs(z+50)<5) return null;
+        return (
+          <mesh key={`slab-${i}`} receiveShadow position={[x, 0.005, z]} rotation={[-Math.PI/2, 0, Math.random()*0.1]}>
+            <planeGeometry args={[4+Math.random()*3, 4+Math.random()*3]} />
+            <primitive object={i%3===0 ? concreteDark : concreteSlab} attach="material" />
+          </mesh>
+        );
+      })}
+
+      {/* Asphalt variation patches */}
+      {Array.from({ length: 15 }).map((_, i) => (
+        <mesh key={`asphalt-patch-${i}`} position={[(Math.random()-0.5)*280, 0.001, (Math.random()-0.5)*280]} rotation={[-Math.PI/2, 0, Math.random()*Math.PI]} receiveShadow>
+          <planeGeometry args={[3+Math.random()*6, 2+Math.random()*3]} />
+          <primitive object={asphaltPatch} attach="material" />
+        </mesh>
+      ))}
 
       {/* Grass patches - park and yards */}
       <mesh receiveShadow position={[-20, 0.01, 80]} rotation={[-Math.PI/2, 0, 0]}>

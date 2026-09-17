@@ -5,7 +5,7 @@ import { RigidBody, CapsuleCollider } from '@react-three/rapier';
 import type { RigidBody as RapierRigidBody } from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
-import { PlayerModel } from './PlayerModel';
+import { PlayerRenderer } from './PlayerRenderer';
 import { usePlayerControls } from './usePlayerControls';
 import { playerTransformRef } from './playerTransformRef';
 
@@ -415,7 +415,7 @@ export function Player() {
             </group>
           ) : (
             <group position={[0, 0, 0]}>
-              <PlayerModel animation={animation} moveSpeed={moveSpeed} isMoving={moveSpeed > 0.1} />
+              <PlayerRenderer animation={animation} moveSpeed={moveSpeed} isMoving={moveSpeed > 0.1} />
             </group>
           )}
         </group>
