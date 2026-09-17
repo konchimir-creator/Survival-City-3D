@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start -p 3000 -H 0.0.0.0",
     "lint": "next lint",
-    "sim": "tsx scripts/sim.ts"
+    "sim": "tsx scripts/sim.ts",
+    "smoke": "tsx scripts/runtime-smoke.ts",
+    "test": "npm run sim && npm run smoke"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.15.1",
