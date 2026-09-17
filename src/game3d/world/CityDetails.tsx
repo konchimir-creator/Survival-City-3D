@@ -184,18 +184,23 @@ function BusStop({ position, rotation = 0 }: { position: [number, number, number
 }
 
 function Lamp({ position }: { position: [number, number] }) {
-  const timeOfDayRef = useRef<string>('day');
   const pointLightRef = useRef<THREE.PointLight>(null);
   const emissiveRef = useRef<THREE.MeshStandardMaterial>(null);
+  const groupRef = useRef<THREE.Group>(null);
 
   useFrame(() => {
     try {
       const tod = (window as any).__timeOfDay || 'day';
-      timeOfDayRef.current = tod;
       const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
+      const camPos = (window as any).__cameraPosition as THREE.Vector3;
+      let dist = 0;
+      if (camPos && groupRef.current) {
+        dist = groupRef.current.position.distanceTo(camPos);
+      }
+      const near = dist < 45; // only near lamps cast real light
       if (pointLightRef.current) {
-        pointLightRef.current.intensity = isNight ? 4 : 0;
-        pointLightRef.current.distance = isNight ? 18 : 0;
+        pointLightRef.current.intensity = isNight && near ? 4 : 0;
+        pointLightRef.current.distance = isNight && near ? 18 : 0;
       }
       if (emissiveRef.current) {
         emissiveRef.current.emissiveIntensity = isNight ? 0.8 : 0.15;
@@ -204,7 +209,7 @@ function Lamp({ position }: { position: [number, number] }) {
   });
 
   return (
-    <group position={[position[0], 0, position[1]]}>
+    <group ref={groupRef as any} position={[position[0], 0, position[1]]}>
       {/* Pole - 5.5m high realistic */}
       <mesh castShadow position={[0, 2.75, 0]}>
         <cylinderGeometry args={[0.06, 0.09, 5.5, 8]} />

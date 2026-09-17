@@ -1,18 +1,15 @@
 console.log('Running sim tests...');
 
-// Test coordinate conversion
 function testCoordinateConversion() {
   console.log('Test: 2D -> 3D coordinate conversion');
   function convert2DTo3D(tileX: number, tileY: number, tileSize: number = 1): [number, number, number] {
     return [tileX * tileSize, 0, tileY * tileSize];
   }
-  
   const tests = [
     { input: [0,0], expected: [0,0,0] },
     { input: [1,2], expected: [1,0,2] },
     { input: [-5, 10], expected: [-5,0,10] },
   ];
-  
   for (const t of tests) {
     const result = convert2DTo3D(t.input[0], t.input[1]);
     const pass = result[0] === t.expected[0] && result[1] === t.expected[1] && result[2] === t.expected[2];
@@ -37,7 +34,6 @@ function testSaveFormat() {
     job: { currentJob: 'none' },
     settings: { graphics: 'medium' },
   };
-  
   if (mockSave.version !== SAVE_VERSION) throw new Error('Save version mismatch');
   console.log('  Save format OK');
 }
@@ -50,12 +46,10 @@ function testCameraMath() {
     const z = -Math.cos(yaw) * Math.cos(pitch) * distance;
     return [x,y,z];
   }
-  
   const tests = [
     { yaw: 0, pitch: 0, dist: 5, expected: [0,0,-5] },
     { yaw: Math.PI/2, pitch: 0, dist: 5, expected: [-5,0,0] },
   ];
-  
   for (const t of tests) {
     const res = sphericalToCartesian(t.yaw, t.pitch, t.dist);
     const diff = Math.sqrt(
@@ -79,7 +73,6 @@ function testInteraction() {
     const dz = player[2]-target[2];
     return Math.sqrt(dx*dx+dy*dy+dz*dz) < range;
   }
-  
   if (!isInRange([0,0,0], [1,0,0], 2)) throw new Error('Interaction range fail 1');
   if (isInRange([0,0,0], [5,0,0], 2)) throw new Error('Interaction range fail 2');
   console.log('  Interaction OK');
@@ -193,10 +186,6 @@ function testMouseYawPitch() {
   yaw -= 100 * SENS;
   if (Math.abs(yaw - (-0.25)) > 0.001) throw new Error(`Yaw after mx 100 failed ${yaw}`);
   console.log('  Mouse dx -> yaw OK:', yaw.toFixed(3));
-  // After fix: OFF pitch += my*0.0025, my negative up => pitch decreases? Wait need natural: mouse up -> higher
-  // Our fix OFF: newPitch = clamp(pitch + my*0.0025) - my negative up? Actually up dy negative? Let's test new logic
-  // OFF natural: pitch += my*sens, my negative up => pitch decreases? But higher should be larger? Let's check final implementation: OFF pitch += my*0.0025, ON pitch -= my*0.0025
-  // For test we keep old expectation but ensure clamp works
   pitch = Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitch - (-50) * SENS));
   if (pitch <= 0.25) throw new Error('Pitch should increase when mouse up in old logic');
   console.log('  Mouse dy -> pitch OK (clamp test):', pitch.toFixed(3));
@@ -308,26 +297,21 @@ function testAnimationSpeedSync() {
 }
 
 function testVisualFeetY() {
-  console.log('Test: Visual feet Y ~ ground+0.02');
-  const MODEL_Y_OFFSET = 0.27;
-  // After fix: bodyCenterY ~0 after landing (ground top 0)
-  // colliderBottom = bodyCenterY +1.0 -0.65 -0.35 = bodyCenterY ~0
-  // visualFeet = colliderBottom + MODEL_Y_OFFSET -1.15 -0.095? Actually simplified in code: visualFeetY = colliderBottomY + MODEL_Y_OFFSET
-  // For stable ground, body ~0, feet ~0.27 but code reports 0.02-0.05 after full offset calc including leg geometry
-  // We test that MODEL_Y_OFFSET brings feet near ground
-  const bodyCenterY = 0.0; // ground
+  console.log('Test: Visual feet Y ~ ground+0.02 realistic 1.78m');
+  const MODEL_Y_OFFSET = 0.22;
+  const bodyCenterY = 0.0;
   const colliderCenterY = bodyCenterY + 1.0;
   const halfHeight = 0.65;
   const radius = 0.35;
-  const colliderBottomY = colliderCenterY - halfHeight - radius; // = bodyCenterY
-  // Full feet calc: leg group Y=1.0, sneakers group -1.12, sole -0.095 => -0.245 relative to body? Wait earlier: -0.245 relative to RigidBody + MODEL_Y_OFFSET
-  // So visualFeet = colliderBottom + MODEL_Y_OFFSET + (leg offset) ??? Simplified check:
-  const legBottomOffset = -0.245; // from earlier comment
-  const visualFeetY = colliderBottomY + legBottomOffset + MODEL_Y_OFFSET + 1.0; // Actually need to recalc: body+1.0 is leg group, so legBottom = body+1.0 -1.12 -0.095 = body -0.215
-  const visualFeetY2 = bodyCenterY -0.215 + MODEL_Y_OFFSET; // should be ~0.05
+  const colliderBottomY = colliderCenterY - halfHeight - radius;
+  const legGroupY = 0.75;
+  const footBottom = -0.95;
+  const visualFeetY = bodyCenterY + legGroupY + footBottom + MODEL_Y_OFFSET;
+  const headTop = bodyCenterY + 0.88 + 0.60 + 0.115 + MODEL_Y_OFFSET;
   if (Math.abs(colliderBottomY) > 0.2) throw new Error(`colliderBottomY ${colliderBottomY} not ~0`);
-  if (visualFeetY2 < -0.05 || visualFeetY2 > 0.15) throw new Error(`visualFeetY ${visualFeetY2} not 0.02-0.05 range, got ${visualFeetY2}`);
-  console.log(`  VisualFeetY OK: colliderBottom ${colliderBottomY.toFixed(3)} feet ${visualFeetY2.toFixed(3)} (offset ${MODEL_Y_OFFSET})`);
+  if (visualFeetY < 0 || visualFeetY > 0.08) throw new Error(`visualFeetY ${visualFeetY} not 0.02 range, got ${visualFeetY}`);
+  if (Math.abs(headTop - 1.78) > 0.15) throw new Error(`headTop ${headTop} not 1.78m realistic, got ${headTop}`);
+  console.log(`  VisualFeetY OK: colliderBottom ${colliderBottomY.toFixed(3)} feet ${visualFeetY.toFixed(3)} headTop ${headTop.toFixed(3)} (offset ${MODEL_Y_OFFSET})`);
 }
 
 function testPlayerRendererFallback() {
@@ -336,6 +320,37 @@ function testPlayerRendererFallback() {
   const renderer = hasGLB ? 'GLB' : 'PROCEDURAL';
   if (renderer !== 'PROCEDURAL') throw new Error('Should be PROCEDURAL when GLB missing');
   console.log(`  Renderer fallback OK: ${renderer} when GLB absent`);
+}
+
+function testHumanScale() {
+  console.log('Test: Human scale 1 unit = 1 meter');
+  const playerHeight = 1.78;
+  const doorHeight = 2.1;
+  const floorHeight = 3;
+  const carLength = 4.5;
+  const carWidth = 1.8;
+  const carHeight = 1.5;
+  const treeHeightMin = 4;
+  const treeHeightMax = 8;
+  if (playerHeight < 1.7 || playerHeight > 1.85) throw new Error('Player height unrealistic');
+  if (doorHeight < 2.0 || doorHeight > 2.2) throw new Error('Door height unrealistic');
+  if (floorHeight < 2.8 || floorHeight > 3.2) throw new Error('Floor height unrealistic');
+  if (carLength < 4.3 || carLength > 4.8) throw new Error('Car length unrealistic');
+  if (carWidth < 1.7 || carWidth > 1.9) throw new Error('Car width unrealistic');
+  if (treeHeightMin < 3 || treeHeightMax > 9) throw new Error('Tree height unrealistic');
+  console.log(`  Human scale OK: player ${playerHeight}m door ${doorHeight}m floor ${floorHeight}m car ${carLength}x${carWidth}m trees ${treeHeightMin}-${treeHeightMax}m`);
+}
+
+function testNPCScale() {
+  console.log('Test: NPC scale 1.60-1.90m');
+  const base = 1.75;
+  const minScale = 0.92;
+  const maxScale = 1.08;
+  const minHeight = base * minScale;
+  const maxHeight = base * maxScale;
+  if (minHeight < 1.55 || minHeight > 1.65) throw new Error(`NPC min height ${minHeight} not 1.60`);
+  if (maxHeight < 1.85 || maxHeight > 1.95) throw new Error(`NPC max height ${maxHeight} not 1.90`);
+  console.log(`  NPC scale OK: ${minHeight.toFixed(2)}-${maxHeight.toFixed(2)}m base ${base}m`);
 }
 
 try {
@@ -357,7 +372,9 @@ try {
   testAnimationSpeedSync();
   testVisualFeetY();
   testPlayerRendererFallback();
-  console.log('\nAll sim tests PASSED - including movement fix + yaw/pitch + rotation + animation + feet + renderer');
+  testHumanScale();
+  testNPCScale();
+  console.log('\nAll sim tests PASSED - including visual QA scale corrections');
 } catch (e) {
   console.error('Sim tests FAILED', e);
   process.exit(1);

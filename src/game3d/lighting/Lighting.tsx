@@ -69,13 +69,13 @@ export function Lighting() {
         hemiSkyColor.setHSL(0.58, 0.45, 0.82);
         hemiGroundColor.setHSL(0.15, 0.2, 0.42);
       } else if (timeOfDay === 'day') {
-        intensity = 1.45;
-        color.setHSL(0.12, 0.05, 1.0);
-        ambientIntensity = 0.72;
-        ambientColor.setHSL(0.6, 0.06, 0.93);
-        hemiIntensity = 0.62;
-        hemiSkyColor.setHSL(0.58, 0.5, 0.86);
-        hemiGroundColor.setHSL(0.1, 0.25, 0.38);
+        intensity = 1.65;
+        color.setHSL(0.12, 0.04, 1.0);
+        ambientIntensity = 0.88;
+        ambientColor.setHSL(0.6, 0.05, 0.95);
+        hemiIntensity = 0.78;
+        hemiSkyColor.setHSL(0.58, 0.45, 0.88);
+        hemiGroundColor.setHSL(0.1, 0.22, 0.42);
       } else if (timeOfDay === 'evening') {
         const t = (hour - 17) / 4;
         intensity = THREE.MathUtils.lerp(1.35, 0.18, t);
@@ -176,9 +176,9 @@ export function SkyAndFog() {
       fogColor = '#8AB4DD';
       sunColor = '#FFE8AA';
     } else if (timeOfDay === 'day') {
-      topColor = '#4A90D9';
-      bottomColor = '#A0D0FF';
-      fogColor = weather.type === 'rain' ? '#6a7a8a' : weather.type === 'cloudy' ? '#8a9aaa' : '#87aadd';
+      topColor = '#5A9FE2';
+      bottomColor = '#B0D8FF';
+      fogColor = weather.type === 'rain' ? '#7a8a9a' : weather.type === 'cloudy' ? '#9aaab8' : '#a0c0e0';
       sunColor = '#FFFFFF';
     } else if (timeOfDay === 'evening') {
       const t = (hour - 17) / 4;
@@ -204,31 +204,43 @@ export function SkyAndFog() {
     return { topColor, bottomColor, fogColor, sunColor, moonColor };
   }, [time.minuteOfDay, weather.type, timeOfDay, hour]);
 
-  // Sun position for visible sun mesh
+  // Sun position for visible sun mesh - high at noon, low at evening, below horizon at night
   const sunPos = useMemo(() => {
     let progress = 0;
-    if (hour >= 5 && hour <= 21) progress = (hour - 5) / 16;
-    else if (hour < 5) progress = -0.1;
-    else progress = 1.1;
-    const angle = progress * Math.PI;
-    const dist = 380;
-    const x = Math.cos(angle) * dist * 0.7;
+    if (hour >= 5 && hour <= 21) progress = (hour - 5) / 16; // 0-1 day
+    else if (hour < 5) progress = -0.15 + (hour / 5) * 0.15; // -0.15 to 0
+    else progress = 1 + ((hour - 21) / 3) * 0.15; // 1 to 1.15
+    const angle = progress * Math.PI; // 0-PI
+    const dist = 420; // beyond fog far 400-500
+    const x = Math.cos(angle) * dist * 0.65;
     const y = Math.sin(angle) * dist;
-    const z = Math.sin(angle * 0.3) * 30;
-    return new THREE.Vector3(x, Math.max(y, -50), z);
+    const z = Math.sin(angle * 0.25) * 25;
+    return new THREE.Vector3(x, Math.max(y, -80), z);
   }, [hour]);
 
   const moonPos = useMemo(() => {
-    // Moon opposite sun
-    let progress = 0;
-    if (hour >= 5 && hour <= 21) progress = (hour - 5) / 16;
-    else progress = hour < 5 ? (hour + 19) / 16 : (hour - 21) / 8;
-    const angle = (progress + 0.5) * Math.PI; // opposite
-    const dist = 350;
-    const x = Math.cos(angle) * dist * 0.6;
+    // Moon high at night (21-5), opposite sun
+    // Night hours: 21-24 and 0-5 => map to 0-1 for moon high at midnight
+    let nightProgress = 0;
+    if (hour >= 21) {
+      nightProgress = (hour - 21) / 8; // 21->0, 24->0.375, 5->1
+    } else if (hour < 5) {
+      nightProgress = (hour + 3) / 8; // 0->0.375, 5->1
+    } else {
+      // Day: moon below horizon
+      nightProgress = -0.3;
+    }
+    // Map nightProgress 0-1 to angle 0-PI for high arc
+    const angle = nightProgress * Math.PI;
+    const dist = 380;
+    const x = Math.cos(angle) * dist * 0.55;
     const y = Math.sin(angle) * dist;
-    const z = -20;
-    return new THREE.Vector3(x, y, z);
+    const z = -30;
+    // During day, put moon below ground so not visible
+    if (hour >= 6 && hour < 20) {
+      return new THREE.Vector3(x, -200, z);
+    }
+    return new THREE.Vector3(x, Math.max(y, 20), z);
   }, [hour]);
 
   const isDay = timeOfDay === 'day' || timeOfDay === 'morning' || timeOfDay === 'dawn' || timeOfDay === 'evening';
@@ -236,9 +248,9 @@ export function SkyAndFog() {
   const isSunVisible = hour >= 5.5 && hour <= 20.5;
   const isMoonVisible = hour < 6 || hour > 19;
 
-  // Fog distance based on graphics and weather
-  const fogNear = settings.graphics === 'low' ? 40 : 60;
-  const fogFar = settings.graphics === 'low' ? 180 : weather.type === 'rain' ? 180 : weather.type === 'cloudy' ? 280 : 380;
+  // Fog distance - lighter, matches sky, not gray wall
+  const fogNear = settings.graphics === 'low' ? 50 : 80;
+  const fogFar = settings.graphics === 'low' ? 220 : weather.type === 'rain' ? 220 : weather.type === 'cloudy' ? 320 : 500;
 
   return (
     <>

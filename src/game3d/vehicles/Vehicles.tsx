@@ -91,22 +91,21 @@ function Vehicle({ data }: { data: VehicleData }) {
     }
 
     meshRef.current.position.copy(data.position);
-    meshRef.current.position.y = 0.35;
+    meshRef.current.position.y = 0.34; // wheel radius 0.32 + 0.02 contact
     meshRef.current.rotation.y = data.rotation;
 
     wheelRefs.current.forEach((wheel) => {
       if (wheel) wheel.rotation.x += delta * data.speed * 2.5;
     });
 
-    // Night lights
     try {
       const tod = (window as any).__timeOfDay || 'day';
       const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
       headLightRefs.current.forEach(m => {
-        if (m) m.emissiveIntensity = isNight ? 1.2 : 0.4;
+        if (m) m.emissiveIntensity = isNight ? 1.2 : 0.35;
       });
       tailLightRefs.current.forEach(m => {
-        if (m) m.emissiveIntensity = isNight ? 1.0 : 0.3;
+        if (m) m.emissiveIntensity = isNight ? 1.0 : 0.25;
       });
     } catch {}
   });
@@ -115,50 +114,83 @@ function Vehicle({ data }: { data: VehicleData }) {
   const isPolice = data.type === 'police';
   const isTaxi = data.type === 'taxi';
 
-  // Realistic scale: car ~4.5m long, 1.8m wide, 1.5m tall
+  // Realistic sedan: length 4.5m, width 1.8m, height 1.5m, wheel radius 0.32m
   return (
     <group ref={meshRef}>
-      {/* Main body - lower */}
-      <mesh castShadow receiveShadow position={[0, 0.45, 0]}>
-        <boxGeometry args={isVan ? [1.9, 0.9, 5.0] : [1.8, 0.7, 4.4]} />
-        <meshStandardMaterial color={data.color} roughness={0.3} metalness={0.4} />
+      {/* Chassis lower */}
+      <mesh castShadow receiveShadow position={[0, 0.42, 0]}>
+        <boxGeometry args={isVan ? [1.9, 0.55, 5.0] : [1.8, 0.48, 4.5]} />
+        <meshStandardMaterial color={data.color} roughness={0.35} metalness={0.35} />
       </mesh>
+
+      {/* Hood - front 1.1m */}
+      {!isVan && (
+        <mesh castShadow position={[0, 0.62, 1.35]}>
+          <boxGeometry args={[1.75, 0.22, 1.1]} />
+          <meshStandardMaterial color={data.color} roughness={0.32} metalness={0.38} />
+        </mesh>
+      )}
+
+      {/* Trunk - rear 0.7m */}
+      {!isVan && (
+        <mesh castShadow position={[0, 0.62, -1.55]}>
+          <boxGeometry args={[1.75, 0.22, 0.7]} />
+          <meshStandardMaterial color={data.color} roughness={0.32} metalness={0.38} />
+        </mesh>
+      )}
       
       {/* Cabin/roof */}
-      <mesh castShadow position={[0, 1.05, isVan ? -0.2 : -0.1]}>
-        <boxGeometry args={isVan ? [1.85, 0.8, 2.8] : [1.7, 0.65, 2.2]} />
-        <meshStandardMaterial color={isVan ? data.color : '#1a1a1a'} roughness={0.4} metalness={0.2} />
+      <mesh castShadow position={[0, 1.02, isVan ? -0.2 : -0.15]}>
+        <boxGeometry args={isVan ? [1.85, 0.78, 2.8] : [1.68, 0.62, 2.1]} />
+        <meshStandardMaterial color={isVan ? data.color : '#1e1e1e'} roughness={0.4} metalness={0.2} />
       </mesh>
+
+      {/* Roof for sedan */}
+      {!isVan && (
+        <mesh castShadow position={[0, 1.34, -0.15]}>
+          <boxGeometry args={[1.6, 0.08, 1.9]} />
+          <meshStandardMaterial color={data.color} roughness={0.35} metalness={0.35} />
+        </mesh>
+      )}
 
       {/* Windshield */}
       {!isVan && (
         <>
-          <mesh position={[0, 1.0, 0.8]} rotation={[0.4, 0, 0]} castShadow>
-            <planeGeometry args={[1.6, 0.8]} />
-            <meshStandardMaterial color="#88aacc" transparent opacity={0.5} roughness={0.05} metalness={0.9} />
+          <mesh position={[0, 1.02, 0.82]} rotation={[0.45, 0, 0]} castShadow>
+            <planeGeometry args={[1.55, 0.65]} />
+            <meshStandardMaterial color="#7a9ab8" transparent opacity={0.48} roughness={0.06} metalness={0.85} />
           </mesh>
-          <mesh position={[0, 1.0, -0.9]} rotation={[-0.3, 0, 0]} castShadow>
-            <planeGeometry args={[1.6, 0.7]} />
-            <meshStandardMaterial color="#88aacc" transparent opacity={0.5} roughness={0.05} metalness={0.9} />
+          <mesh position={[0, 1.02, -0.95]} rotation={[-0.35, 0, 0]} castShadow>
+            <planeGeometry args={[1.55, 0.60]} />
+            <meshStandardMaterial color="#7a9ab8" transparent opacity={0.48} roughness={0.06} metalness={0.85} />
           </mesh>
-          {/* Side windows */}
-          <mesh position={[-0.86, 1.0, -0.1]} rotation={[0, Math.PI/2, 0]} castShadow>
-            <planeGeometry args={[1.8, 0.6]} />
-            <meshStandardMaterial color="#88aacc" transparent opacity={0.4} roughness={0.1} metalness={0.8} />
+          <mesh position={[-0.85, 1.02, -0.15]} rotation={[0, Math.PI/2, 0]} castShadow>
+            <planeGeometry args={[1.7, 0.52]} />
+            <meshStandardMaterial color="#7a9ab8" transparent opacity={0.38} roughness={0.1} metalness={0.75} />
           </mesh>
-          <mesh position={[0.86, 1.0, -0.1]} rotation={[0, -Math.PI/2, 0]} castShadow>
-            <planeGeometry args={[1.8, 0.6]} />
-            <meshStandardMaterial color="#88aacc" transparent opacity={0.4} roughness={0.1} metalness={0.8} />
+          <mesh position={[0.85, 1.02, -0.15]} rotation={[0, -Math.PI/2, 0]} castShadow>
+            <planeGeometry args={[1.7, 0.52]} />
+            <meshStandardMaterial color="#7a9ab8" transparent opacity={0.38} roughness={0.1} metalness={0.75} />
           </mesh>
         </>
       )}
 
-      {/* Wheels - realistic 0.35m radius */}
+      {/* Bumpers */}
+      <mesh castShadow position={[0, 0.32, 2.28]}>
+        <boxGeometry args={[1.82, 0.18, 0.12]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.8} metalness={0.2} />
+      </mesh>
+      <mesh castShadow position={[0, 0.32, -2.28]}>
+        <boxGeometry args={[1.82, 0.18, 0.12]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.8} metalness={0.2} />
+      </mesh>
+
+      {/* Wheels - all 4 same height, radius 0.32, axle at 0.32 */}
       {[
-        [-0.9, 0, 1.3],
-        [0.9, 0, 1.3],
-        [-0.9, 0, -1.3],
-        [0.9, 0, -1.3],
+        [-0.88, 0, 1.35],
+        [0.88, 0, 1.35],
+        [-0.88, 0, -1.35],
+        [0.88, 0, -1.35],
       ].map((pos, i) => (
         <group key={`wheel-${i}`} position={pos as any}>
           <mesh
@@ -166,79 +198,67 @@ function Vehicle({ data }: { data: VehicleData }) {
             rotation={[0, 0, Math.PI/2]}
             castShadow
           >
-            <cylinderGeometry args={[0.32, 0.32, 0.25, 14]} />
+            <cylinderGeometry args={[0.32, 0.32, 0.24, 14]} />
             <meshStandardMaterial color="#111111" roughness={0.9} />
           </mesh>
-          {/* Rim */}
           <mesh rotation={[0, 0, Math.PI/2]} castShadow>
-            <cylinderGeometry args={[0.18, 0.18, 0.26, 10]} />
+            <cylinderGeometry args={[0.18, 0.18, 0.25, 10]} />
             <meshStandardMaterial color="#888888" metalness={0.8} roughness={0.2} />
           </mesh>
         </group>
       ))}
 
-      {/* Headlights - night turns on brighter */}
-      <mesh position={[-0.55, 0.4, 2.15]} >
-        <sphereGeometry args={[0.12, 8, 8]} />
-        <meshStandardMaterial ref={(el:any)=>{ if(el) headLightRefs.current[0]=el; }} color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.6} />
+      {/* Headlights */}
+      <mesh position={[-0.52, 0.42, 2.30]} >
+        <sphereGeometry args={[0.11, 10, 10]} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) headLightRefs.current[0]=el; }} color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.5} />
       </mesh>
-      <mesh position={[0.55, 0.4, 2.15]} >
-        <sphereGeometry args={[0.12, 8, 8]} />
-        <meshStandardMaterial ref={(el:any)=>{ if(el) headLightRefs.current[1]=el; }} color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.6} />
+      <mesh position={[0.52, 0.42, 2.30]} >
+        <sphereGeometry args={[0.11, 10, 10]} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) headLightRefs.current[1]=el; }} color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.5} />
       </mesh>
       {/* Taillights */}
-      <mesh position={[-0.6, 0.5, -2.15]} >
-        <boxGeometry args={[0.15, 0.15, 0.05]} />
-        <meshStandardMaterial ref={(el:any)=>{ if(el) tailLightRefs.current[0]=el; }} color="#ff2222" emissive="#ff0000" emissiveIntensity={0.5} />
+      <mesh position={[-0.58, 0.48, -2.30]} >
+        <boxGeometry args={[0.14, 0.14, 0.05]} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) tailLightRefs.current[0]=el; }} color="#ff2222" emissive="#ff0000" emissiveIntensity={0.4} />
       </mesh>
-      <mesh position={[0.6, 0.5, -2.15]} >
-        <boxGeometry args={[0.15, 0.15, 0.05]} />
-        <meshStandardMaterial ref={(el:any)=>{ if(el) tailLightRefs.current[1]=el; }} color="#ff2222" emissive="#ff0000" emissiveIntensity={0.5} />
+      <mesh position={[0.58, 0.48, -2.30]} >
+        <boxGeometry args={[0.14, 0.14, 0.05]} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) tailLightRefs.current[1]=el; }} color="#ff2222" emissive="#ff0000" emissiveIntensity={0.4} />
       </mesh>
       
-      {/* Taxi sign */}
       {isTaxi && (
-        <group position={[0, 1.45, 0]}>
+        <group position={[0, 1.42, -0.1]}>
           <mesh castShadow>
-            <boxGeometry args={[0.7, 0.18, 0.25]} />
+            <boxGeometry args={[0.65, 0.16, 0.22]} />
             <meshStandardMaterial color="#ffffff" roughness={0.6} />
-          </mesh>
-          <mesh position={[0, 0.05, 0.13]}>
-            <planeGeometry args={[0.5, 0.1]} />
-            <meshStandardMaterial color="#000000" />
           </mesh>
         </group>
       )}
 
-      {/* Police details */}
       {isPolice && (
         <>
-          <mesh position={[0, 0.45, 0]} >
-            <boxGeometry args={[1.82, 0.05, 4.42]} />
+          <mesh position={[0, 0.42, 0]} >
+            <boxGeometry args={[1.82, 0.04, 4.52]} />
             <meshStandardMaterial color="#ffffff" roughness={0.8} />
           </mesh>
-          <mesh position={[-0.3, 1.45, 0]} castShadow>
-            <boxGeometry args={[0.22, 0.1, 0.4]} />
-            <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.2} />
+          <mesh position={[-0.28, 1.40, 0.1]} castShadow>
+            <boxGeometry args={[0.20, 0.09, 0.36]} />
+            <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.0} />
           </mesh>
-          <mesh position={[0.3, 1.45, 0]} castShadow>
-            <boxGeometry args={[0.22, 0.1, 0.4]} />
-            <meshStandardMaterial color="#0000ff" emissive="#0000ff" emissiveIntensity={1.2} />
-          </mesh>
-          <mesh position={[0, 0.8, 0.5]} >
-            <planeGeometry args={[0.8, 0.3]} />
-            <meshStandardMaterial color="#ffffff" />
+          <mesh position={[0.28, 1.40, 0.1]} castShadow>
+            <boxGeometry args={[0.20, 0.09, 0.36]} />
+            <meshStandardMaterial color="#0000ff" emissive="#0000ff" emissiveIntensity={1.0} />
           </mesh>
         </>
       )}
 
-      {/* License plates */}
-      <mesh position={[0, 0.35, 2.22]} >
-        <planeGeometry args={[0.4, 0.12]} />
+      <mesh position={[0, 0.32, 2.34]} >
+        <planeGeometry args={[0.38, 0.11]} />
         <meshStandardMaterial color="#ffffff" />
       </mesh>
-      <mesh position={[0, 0.35, -2.22]} rotation={[0, Math.PI, 0]} >
-        <planeGeometry args={[0.4, 0.12]} />
+      <mesh position={[0, 0.32, -2.34]} rotation={[0, Math.PI, 0]} >
+        <planeGeometry args={[0.38, 0.11]} />
         <meshStandardMaterial color="#ffffff" />
       </mesh>
     </group>

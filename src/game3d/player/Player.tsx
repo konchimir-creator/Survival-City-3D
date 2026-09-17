@@ -12,11 +12,12 @@ import { playerTransformRef } from './playerTransformRef';
 const SAFE_SPAWN: [number, number, number] = [15, 3, 15];
 const USE_DEBUG_CUBE = false;
 
-// Calculated from PlayerModel geometry:
-// Leg group Y=1.0, sneakers group Y=-1.15, sole bottom -0.095 relative to sneakers group
-// => sneakers bottom = 1.0 -1.15 -0.095 = -0.245 relative to RigidBody
-// To make feet at 0.02-0.05 above ground, need offset +0.27
-const MODEL_Y_OFFSET = 0.27;
+// Realistic 1.78m: Leg group Y=0.70, foot bottom -0.86-0.05-0.04 = -0.95 relative to leg group
+// => feet = L - F = 0.70 -0.95 = -0.25 relative to visual root
+// Torso 0.88 + head 0.60 + radius 0.115 = 1.595, plus MODEL_Y_OFFSET = 1.78 => offset 0.185-0.22
+// For feet 0.02: MODEL_Y_OFFSET = 0.02 +0.25 =0.27 old, new with L 0.70 F 0.95 => 0.02+0.25=0.27 still but head calc gives 0.22
+// Use 0.22 for realistic 1.78m total height
+const MODEL_Y_OFFSET = 0.22;
 
 export function Player() {
   const rigidBodyRef = useRef<RapierRigidBody>(null);

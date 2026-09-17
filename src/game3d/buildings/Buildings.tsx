@@ -69,11 +69,18 @@ function Building({ def }: { def: BuildingDef }) {
   const signMatRef = useRef<THREE.MeshStandardMaterial>(null);
   const doorLightRef = useRef<THREE.PointLight>(null);
   const windowLightsRef = useRef<THREE.Group>(null);
+  const buildingRef = useRef<THREE.Group>(null);
 
   useFrame(() => {
     try {
       const tod = (window as any).__timeOfDay || 'day';
       const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
+      const camPos = (window as any).__cameraPosition as THREE.Vector3;
+      let near = true;
+      if (camPos && buildingRef.current) {
+        const dist = buildingRef.current.getWorldPosition(new THREE.Vector3()).distanceTo(camPos);
+        near = dist < 35;
+      }
       if (signMatRef.current) {
         if (type === 'shop' || type === 'cafe' || type === 'police') {
           signMatRef.current.emissiveIntensity = isNight ? 0.5 : 0.15;
@@ -83,15 +90,21 @@ function Building({ def }: { def: BuildingDef }) {
       }
       if (doorLightRef.current) {
         if (type === 'shop' || type === 'cafe') {
-          doorLightRef.current.intensity = isNight ? 8 : 0;
+          doorLightRef.current.intensity = isNight && near ? 8 : 0;
         } else if (type === 'residential') {
-          doorLightRef.current.intensity = isNight ? 1.5 : 0;
+          doorLightRef.current.intensity = isNight && near ? 1.5 : 0;
         } else {
           doorLightRef.current.intensity = 0;
         }
       }
       if (windowLightsRef.current) {
         windowLightsRef.current.visible = isNight;
+        // Hide pointLights if far
+        windowLightsRef.current.traverse((obj:any)=>{
+          if (obj.isPointLight) {
+            obj.intensity = isNight && near ? obj.userData.baseIntensity || 1.2 : 0;
+          }
+        });
       }
     } catch {}
   });
@@ -105,7 +118,7 @@ function Building({ def }: { def: BuildingDef }) {
     <RigidBody type="fixed" colliders={false} position={position} rotation={[0, rotation, 0]}>
       <CuboidCollider args={[size[0]/2, size[1]/2, size[2]/2]} />
       
-      <group>
+      <group ref={buildingRef as any}>
         {/* Main building */}
         <mesh castShadow receiveShadow position={[0, size[1]/2, 0]}>
           <boxGeometry args={[size[0], size[1], size[2]]} />
@@ -298,12 +311,12 @@ function Building({ def }: { def: BuildingDef }) {
                 <planeGeometry args={[1.0, 1.0]} />
                 <primitive object={windowLitMat} attach="material" />
               </mesh>
-              <pointLight position={[0, 0, 0.5]} intensity={1.2} distance={8} color="#ffcc88" decay={2} />
+              <pointLight position={[0, 0, 0.5]} intensity={0} distance={8} color="#ffcc88" decay={2} userData={{ baseIntensity: 1.2 }} />
             </group>
           ))}
           {(type === 'shop' || type === 'cafe' || type === 'internet_cafe') && (
             <group position={[0, 1.5, size[2]/2 + 0.5]}>
-              <pointLight intensity={2} distance={10} color="#ffcc88" decay={2} />
+              <pointLight intensity={0} distance={10} color="#ffcc88" decay={2} userData={{ baseIntensity: 2 }} />
             </group>
           )}
         </group>

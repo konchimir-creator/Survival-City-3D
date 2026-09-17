@@ -12,14 +12,12 @@ interface NPCData {
   position: THREE.Vector3;
   target: THREE.Vector3;
   speed: number;
-  scale: number; // 1.6-1.9m -> 0.91-1.09 of 1.75 base
+  scale: number; // world height 1.60-1.90
   waitTime: number;
   route: THREE.Vector3[];
   routeIndex: number;
-  hueShift: number;
 }
 
-// Shared materials for performance - no per-frame clone
 const sharedMaterials = {
   skinLight: new THREE.MeshStandardMaterial({ color: '#e8c4a8', roughness: 0.7, metalness: 0 }),
   skinMid: new THREE.MeshStandardMaterial({ color: '#c99a7a', roughness: 0.75, metalness: 0 }),
@@ -76,8 +74,15 @@ function createNPCs(count: number): NPCData[] {
         z + (Math.random()-0.5)*40
       ));
     }
-    // Scale 1.6-1.9m relative to base 1.75 => 0.91-1.09
-    const heightScale = 0.91 + Math.random()*0.18;
+    // Realistic adult 1.60-1.90, majority 1.68-1.85
+    // Base height 1.75m, scale 0.92-1.08 = 1.61-1.89
+    // Use 70% majority 0.96-1.03 = 1.68-1.80
+    let heightScale: number;
+    if (Math.random() < 0.7) {
+      heightScale = 0.96 + Math.random()*0.07; // 1.68-1.80 majority
+    } else {
+      heightScale = 0.92 + Math.random()*0.16; // full range 1.61-1.89
+    }
     npcs.push({
       id: `npc-${i}`,
       variant,
@@ -88,7 +93,6 @@ function createNPCs(count: number): NPCData[] {
       waitTime: 0,
       route,
       routeIndex: 0,
-      hueShift: (Math.random()-0.5)*0.1,
     });
   }
   return npcs;
@@ -130,24 +134,22 @@ function NPC({ data }: { data: NPCData }) {
     }
 
     groupRef.current.position.copy(data.position);
-    groupRef.current.position.y = 0.02; // feet on ground
+    groupRef.current.position.y = 0; // base at ground, feet calc ensures 0.02
 
-    // Animation: walk vs idle
     if (torsoRef.current) {
       if (isWalking) {
         const freq = data.speed * 5;
-        const legSwing = Math.sin(timeRef.current * freq) * 0.5;
-        const armSwing = Math.sin(timeRef.current * freq) * 0.4;
-        const bob = Math.abs(Math.sin(timeRef.current * freq)) * 0.04;
+        const legSwing = Math.sin(timeRef.current * freq) * 0.45;
+        const armSwing = Math.sin(timeRef.current * freq) * 0.35;
+        const bob = Math.abs(Math.sin(timeRef.current * freq)) * 0.02; // reduced bob to avoid knee in asphalt
         if (leftLegRef.current) leftLegRef.current.rotation.x = legSwing;
         if (rightLegRef.current) rightLegRef.current.rotation.x = -legSwing;
         if (leftArmRef.current) leftArmRef.current.rotation.x = -armSwing;
         if (rightArmRef.current) rightArmRef.current.rotation.x = armSwing;
-        torsoRef.current.position.y = 0.95 + bob;
+        torsoRef.current.position.y = 0.88 + bob;
       } else {
-        // idle breathing
-        const bob = Math.sin(timeRef.current * 0.8) * 0.008;
-        torsoRef.current.position.y = 0.95 + bob;
+        const bob = Math.sin(timeRef.current * 0.8) * 0.006;
+        torsoRef.current.position.y = 0.88 + bob;
         if (leftLegRef.current) leftLegRef.current.rotation.x = THREE.MathUtils.lerp(leftLegRef.current.rotation.x, 0, delta*3);
         if (rightLegRef.current) rightLegRef.current.rotation.x = THREE.MathUtils.lerp(rightLegRef.current.rotation.x, 0, delta*3);
         if (leftArmRef.current) leftArmRef.current.rotation.x = THREE.MathUtils.lerp(leftArmRef.current.rotation.x, 0, delta*3);
@@ -156,57 +158,53 @@ function NPC({ data }: { data: NPCData }) {
     }
   });
 
-  // Height-adjusted proportions: base height ~1.78m
-  const isWoman = data.variant === 'woman';
   const isPolice = data.variant === 'police';
 
+  // Realistic 1.75m base: torso 0.88, legs 0.85, foot -0.81, shoe half 0.04 => feet 0.02
   return (
     <group ref={groupRef} scale={data.scale}>
-      <group ref={torsoRef} position={[0, 0.95, 0]}>
-        {/* Torso */}
-        <mesh castShadow position={[0, 0.32, 0]}>
-          <capsuleGeometry args={[0.22, 0.4, 6, 10]} />
+      <group ref={torsoRef} position={[0, 0.88, 0]}>
+        <mesh castShadow position={[0, 0.26, 0]}>
+          <capsuleGeometry args={[0.19, 0.36, 6, 10]} />
           <primitive object={mats.torso} attach="material" />
         </mesh>
-        {/* Head */}
-        <group position={[0, 0.78, 0]}>
+        <group position={[0, 0.60, 0]}>
           <mesh castShadow>
-            <sphereGeometry args={[0.16, 14, 14]} />
+            <sphereGeometry args={[0.115, 14, 14]} />
             <primitive object={mats.skin} attach="material" />
           </mesh>
-          <mesh position={[0, 0.08, -0.02]} castShadow>
-            <sphereGeometry args={[0.17, 12, 12, 0, Math.PI*2, 0, Math.PI*0.6]} />
+          <mesh position={[0, 0.06, -0.01]} castShadow>
+            <sphereGeometry args={[0.12, 12, 12, 0, Math.PI*2, 0, Math.PI*0.6]} />
             <primitive object={mats.hair} attach="material" />
           </mesh>
           {isPolice && (
-            <mesh position={[0, 0.14, 0]} castShadow>
-              <cylinderGeometry args={[0.18, 0.18, 0.08, 12]} />
+            <mesh position={[0, 0.10, 0]} castShadow>
+              <cylinderGeometry args={[0.125, 0.125, 0.06, 12]} />
               <primitive object={sharedMaterials.policeHat} attach="material" />
             </mesh>
           )}
         </group>
-        {/* Arms */}
-        <group ref={leftArmRef} position={[-0.30, 0.42, 0]}>
-          <mesh castShadow><sphereGeometry args={[0.07, 8, 8]} /><primitive object={mats.torso} attach="material" /></mesh>
-          <mesh position={[0, -0.18, 0]} castShadow><capsuleGeometry args={[0.06, 0.28, 4, 8]} /><primitive object={mats.torso} attach="material" /></mesh>
-          <mesh position={[0, -0.42, 0]} castShadow><sphereGeometry args={[0.05, 8, 8]} /><primitive object={mats.skin} attach="material" /></mesh>
+        <group ref={leftArmRef} position={[-0.24, 0.32, 0]}>
+          <mesh castShadow><sphereGeometry args={[0.055, 8, 8]} /><primitive object={mats.torso} attach="material" /></mesh>
+          <mesh position={[0, -0.14, 0]} castShadow><capsuleGeometry args={[0.045, 0.22, 4, 8]} /><primitive object={mats.torso} attach="material" /></mesh>
+          <mesh position={[0, -0.32, 0]} castShadow><sphereGeometry args={[0.04, 8, 8]} /><primitive object={mats.skin} attach="material" /></mesh>
         </group>
-        <group ref={rightArmRef} position={[0.30, 0.42, 0]}>
-          <mesh castShadow><sphereGeometry args={[0.07, 8, 8]} /><primitive object={mats.torso} attach="material" /></mesh>
-          <mesh position={[0, -0.18, 0]} castShadow><capsuleGeometry args={[0.06, 0.28, 4, 8]} /><primitive object={mats.torso} attach="material" /></mesh>
-          <mesh position={[0, -0.42, 0]} castShadow><sphereGeometry args={[0.05, 8, 8]} /><primitive object={mats.skin} attach="material" /></mesh>
+        <group ref={rightArmRef} position={[0.24, 0.32, 0]}>
+          <mesh castShadow><sphereGeometry args={[0.055, 8, 8]} /><primitive object={mats.torso} attach="material" /></mesh>
+          <mesh position={[0, -0.14, 0]} castShadow><capsuleGeometry args={[0.045, 0.22, 4, 8]} /><primitive object={mats.torso} attach="material" /></mesh>
+          <mesh position={[0, -0.32, 0]} castShadow><sphereGeometry args={[0.04, 8, 8]} /><primitive object={mats.skin} attach="material" /></mesh>
         </group>
       </group>
-      {/* Legs - visual feet Y ~ ground +0.02 */}
-      <group ref={leftLegRef} position={[-0.12, 0.9, 0]}>
-        <mesh castShadow position={[0, -0.22, 0]}><capsuleGeometry args={[0.10, 0.35, 4, 8]} /><primitive object={mats.legs} attach="material" /></mesh>
-        <mesh castShadow position={[0, -0.52, 0]}><capsuleGeometry args={[0.09, 0.35, 4, 8]} /><primitive object={mats.legs} attach="material" /></mesh>
-        <mesh castShadow position={[0, -0.82, 0.04]}><boxGeometry args={[0.12, 0.08, 0.22]} /><primitive object={mats.shoes} attach="material" /></mesh>
+      {/* Legs - feet Y = groupY(0) + legY(0.85) + footOffset(-0.81) - shoeHalf(0.04) = 0.00, +0.02 sole = 0.02 */}
+      <group ref={leftLegRef} position={[-0.10, 0.85, 0]}>
+        <mesh castShadow position={[0, -0.18, 0]}><capsuleGeometry args={[0.08, 0.28, 4, 8]} /><primitive object={mats.legs} attach="material" /></mesh>
+        <mesh castShadow position={[0, -0.44, 0]}><capsuleGeometry args={[0.07, 0.28, 4, 8]} /><primitive object={mats.legs} attach="material" /></mesh>
+        <mesh castShadow position={[0, -0.81, 0.03]}><boxGeometry args={[0.10, 0.07, 0.20]} /><primitive object={mats.shoes} attach="material" /></mesh>
       </group>
-      <group ref={rightLegRef} position={[0.12, 0.9, 0]}>
-        <mesh castShadow position={[0, -0.22, 0]}><capsuleGeometry args={[0.10, 0.35, 4, 8]} /><primitive object={mats.legs} attach="material" /></mesh>
-        <mesh castShadow position={[0, -0.52, 0]}><capsuleGeometry args={[0.09, 0.35, 4, 8]} /><primitive object={mats.legs} attach="material" /></mesh>
-        <mesh castShadow position={[0, -0.82, 0.04]}><boxGeometry args={[0.12, 0.08, 0.22]} /><primitive object={mats.shoes} attach="material" /></mesh>
+      <group ref={rightLegRef} position={[0.10, 0.85, 0]}>
+        <mesh castShadow position={[0, -0.18, 0]}><capsuleGeometry args={[0.08, 0.28, 4, 8]} /><primitive object={mats.legs} attach="material" /></mesh>
+        <mesh castShadow position={[0, -0.44, 0]}><capsuleGeometry args={[0.07, 0.28, 4, 8]} /><primitive object={mats.legs} attach="material" /></mesh>
+        <mesh castShadow position={[0, -0.81, 0.03]}><boxGeometry args={[0.10, 0.07, 0.20]} /><primitive object={mats.shoes} attach="material" /></mesh>
       </group>
     </group>
   );
@@ -229,53 +227,49 @@ export function NPCs() {
 export function StaticNPCs() {
   return (
     <group>
-      <group position={[45, 0.02, -32]} scale={0.98}>
-        <group position={[0, 0.95, 0]}>
-          <mesh castShadow position={[0, 0.32, 0]}><capsuleGeometry args={[0.22, 0.4, 6, 10]} /><primitive object={sharedMaterials.seller} attach="material" /></mesh>
-          <group position={[0, 0.78, 0]}>
-            <mesh castShadow><sphereGeometry args={[0.16, 14, 14]} /><primitive object={sharedMaterials.skinLight} attach="material" /></mesh>
-            <mesh position={[0, 0.08, -0.02]} castShadow><sphereGeometry args={[0.17, 12, 12, 0, Math.PI*2, 0, Math.PI*0.6]} /><primitive object={sharedMaterials.hairBrown} attach="material" /></mesh>
+      <group position={[45, 0, -32]} scale={0.98}>
+        <group position={[0, 0.88, 0]}>
+          <mesh castShadow position={[0, 0.26, 0]}><capsuleGeometry args={[0.19, 0.36, 6, 10]} /><primitive object={sharedMaterials.seller} attach="material" /></mesh>
+          <group position={[0, 0.60, 0]}>
+            <mesh castShadow><sphereGeometry args={[0.115, 14, 14]} /><primitive object={sharedMaterials.skinLight} attach="material" /></mesh>
           </group>
         </group>
-        <mesh castShadow position={[-0.12, 0.08, 0]}><capsuleGeometry args={[0.09, 0.35, 4, 8]} /><primitive object={sharedMaterials.pantsBlack} attach="material" /></mesh>
-        <mesh castShadow position={[0.12, 0.08, 0]}><capsuleGeometry args={[0.09, 0.35, 4, 8]} /><primitive object={sharedMaterials.pantsBlack} attach="material" /></mesh>
+        <mesh castShadow position={[-0.10, 0.04, 0]}><capsuleGeometry args={[0.07, 0.28, 4, 8]} /><primitive object={sharedMaterials.pantsBlack} attach="material" /></mesh>
+        <mesh castShadow position={[0.10, 0.04, 0]}><capsuleGeometry args={[0.07, 0.28, 4, 8]} /><primitive object={sharedMaterials.pantsBlack} attach="material" /></mesh>
       </group>
 
-      <group position={[-85, 0.02, 35]} scale={1.05}>
-        <group position={[0, 0.95, 0]}>
-          <mesh castShadow position={[0, 0.32, 0]}><capsuleGeometry args={[0.24, 0.42, 6, 10]} /><primitive object={sharedMaterials.worker} attach="material" /></mesh>
-          <group position={[0, 0.78, 0]}>
-            <mesh castShadow><sphereGeometry args={[0.16, 14, 14]} /><primitive object={sharedMaterials.skinMid} attach="material" /></mesh>
-            <mesh position={[0, 0.08, -0.02]} castShadow><sphereGeometry args={[0.17, 12, 12, 0, Math.PI*2, 0, Math.PI*0.6]} /><primitive object={sharedMaterials.hairBlack} attach="material" /></mesh>
+      <group position={[-85, 0, 35]} scale={1.02}>
+        <group position={[0, 0.88, 0]}>
+          <mesh castShadow position={[0, 0.26, 0]}><capsuleGeometry args={[0.20, 0.38, 6, 10]} /><primitive object={sharedMaterials.worker} attach="material" /></mesh>
+          <group position={[0, 0.60, 0]}>
+            <mesh castShadow><sphereGeometry args={[0.115, 14, 14]} /><primitive object={sharedMaterials.skinMid} attach="material" /></mesh>
           </group>
         </group>
-        <mesh castShadow position={[-0.12, 0.08, 0]}><capsuleGeometry args={[0.10, 0.35, 4, 8]} /><primitive object={sharedMaterials.jeansDark} attach="material" /></mesh>
-        <mesh castShadow position={[0.12, 0.08, 0]}><capsuleGeometry args={[0.10, 0.35, 4, 8]} /><primitive object={sharedMaterials.jeansDark} attach="material" /></mesh>
+        <mesh castShadow position={[-0.10, 0.04, 0]}><capsuleGeometry args={[0.08, 0.28, 4, 8]} /><primitive object={sharedMaterials.jeansDark} attach="material" /></mesh>
+        <mesh castShadow position={[0.10, 0.04, 0]}><capsuleGeometry args={[0.08, 0.28, 4, 8]} /><primitive object={sharedMaterials.jeansDark} attach="material" /></mesh>
       </group>
 
-      <group position={[70, 0.02, -12]} scale={0.92}>
-        <group position={[0, 0.95, 0]}>
-          <mesh castShadow position={[0, 0.32, 0]}><capsuleGeometry args={[0.20, 0.38, 6, 10]} /><primitive object={sharedMaterials.womanTop} attach="material" /></mesh>
-          <group position={[0, 0.78, 0]}>
-            <mesh castShadow><sphereGeometry args={[0.15, 14, 14]} /><primitive object={sharedMaterials.skinLight} attach="material" /></mesh>
-            <mesh position={[0, 0.08, -0.02]} castShadow><sphereGeometry args={[0.16, 12, 12, 0, Math.PI*2, 0, Math.PI*0.6]} /><primitive object={sharedMaterials.hairBlonde} attach="material" /></mesh>
+      <group position={[70, 0, -12]} scale={0.96}>
+        <group position={[0, 0.88, 0]}>
+          <mesh castShadow position={[0, 0.26, 0]}><capsuleGeometry args={[0.18, 0.34, 6, 10]} /><primitive object={sharedMaterials.womanTop} attach="material" /></mesh>
+          <group position={[0, 0.60, 0]}>
+            <mesh castShadow><sphereGeometry args={[0.11, 14, 14]} /><primitive object={sharedMaterials.skinLight} attach="material" /></mesh>
           </group>
         </group>
-        <mesh castShadow position={[-0.12, 0.08, 0]}><capsuleGeometry args={[0.09, 0.35, 4, 8]} /><primitive object={sharedMaterials.skirt} attach="material" /></mesh>
-        <mesh castShadow position={[0.12, 0.08, 0]}><capsuleGeometry args={[0.09, 0.35, 4, 8]} /><primitive object={sharedMaterials.skirt} attach="material" /></mesh>
+        <mesh castShadow position={[-0.10, 0.04, 0]}><capsuleGeometry args={[0.07, 0.28, 4, 8]} /><primitive object={sharedMaterials.skirt} attach="material" /></mesh>
+        <mesh castShadow position={[0.10, 0.04, 0]}><capsuleGeometry args={[0.07, 0.28, 4, 8]} /><primitive object={sharedMaterials.skirt} attach="material" /></mesh>
       </group>
 
-      <group position={[90, 0.02, 63]} scale={1.08}>
-        <group position={[0, 0.95, 0]}>
-          <mesh castShadow position={[0, 0.32, 0]}><capsuleGeometry args={[0.24, 0.42, 6, 10]} /><primitive object={sharedMaterials.police} attach="material" /></mesh>
-          <group position={[0, 0.78, 0]}>
-            <mesh castShadow><sphereGeometry args={[0.16, 14, 14]} /><primitive object={sharedMaterials.skinMid} attach="material" /></mesh>
-            <mesh position={[0, 0.08, -0.02]} castShadow><sphereGeometry args={[0.17, 12, 12, 0, Math.PI*2, 0, Math.PI*0.6]} /><primitive object={sharedMaterials.hairBlack} attach="material" /></mesh>
-            <mesh position={[0, 0.14, 0]} castShadow><cylinderGeometry args={[0.18, 0.18, 0.08, 12]} /><primitive object={sharedMaterials.policeHat} attach="material" /></mesh>
+      <group position={[90, 0, 63]} scale={1.03}>
+        <group position={[0, 0.88, 0]}>
+          <mesh castShadow position={[0, 0.26, 0]}><capsuleGeometry args={[0.20, 0.38, 6, 10]} /><primitive object={sharedMaterials.police} attach="material" /></mesh>
+          <group position={[0, 0.60, 0]}>
+            <mesh castShadow><sphereGeometry args={[0.115, 14, 14]} /><primitive object={sharedMaterials.skinMid} attach="material" /></mesh>
+            <mesh position={[0, 0.10, 0]} castShadow><cylinderGeometry args={[0.125, 0.125, 0.06, 12]} /><primitive object={sharedMaterials.policeHat} attach="material" /></mesh>
           </group>
         </group>
-        <mesh castShadow position={[-0.12, 0.08, 0]}><capsuleGeometry args={[0.10, 0.35, 4, 8]} /><primitive object={sharedMaterials.pantsBlack} attach="material" /></mesh>
-        <mesh castShadow position={[0.12, 0.08, 0]}><capsuleGeometry args={[0.10, 0.35, 4, 8]} /><primitive object={sharedMaterials.pantsBlack} attach="material" /></mesh>
+        <mesh castShadow position={[-0.10, 0.04, 0]}><capsuleGeometry args={[0.08, 0.28, 4, 8]} /><primitive object={sharedMaterials.pantsBlack} attach="material" /></mesh>
+        <mesh castShadow position={[0.10, 0.04, 0]}><capsuleGeometry args={[0.08, 0.28, 4, 8]} /><primitive object={sharedMaterials.pantsBlack} attach="material" /></mesh>
       </group>
     </group>
   );
