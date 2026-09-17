@@ -197,13 +197,17 @@ function Lamp({ position }: { position: [number, number] }) {
       if (camPos && groupRef.current) {
         dist = groupRef.current.position.distanceTo(camPos);
       }
-      const near = dist < 45; // only near lamps cast real light
+      const near = dist < 50;
       if (pointLightRef.current) {
-        pointLightRef.current.intensity = isNight && near ? 4 : 0;
-        pointLightRef.current.distance = isNight && near ? 18 : 0;
+        const active = isNight && near;
+        pointLightRef.current.intensity = active ? 7 : 0;
+        pointLightRef.current.distance = active ? 26 : 0;
+        if (active) {
+          (window as any).__activeLights = ((window as any).__activeLights || 0) + 1;
+        }
       }
       if (emissiveRef.current) {
-        emissiveRef.current.emissiveIntensity = isNight ? 0.8 : 0.15;
+        emissiveRef.current.emissiveIntensity = isNight ? 0.85 : 0.15;
       }
     } catch {}
   });

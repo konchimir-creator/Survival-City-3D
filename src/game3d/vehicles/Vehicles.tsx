@@ -102,11 +102,20 @@ function Vehicle({ data }: { data: VehicleData }) {
       const tod = (window as any).__timeOfDay || 'day';
       const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
       headLightRefs.current.forEach(m => {
-        if (m) m.emissiveIntensity = isNight ? 1.2 : 0.35;
+        if (m) m.emissiveIntensity = isNight ? 1.6 : 0.35;
       });
       tailLightRefs.current.forEach(m => {
-        if (m) m.emissiveIntensity = isNight ? 1.0 : 0.25;
+        if (m) m.emissiveIntensity = isNight ? 1.2 : 0.25;
       });
+      if (isNight) {
+        const camPos = (window as any).__cameraPosition as THREE.Vector3;
+        if (camPos && meshRef.current) {
+          const dist = meshRef.current.position.distanceTo(camPos);
+          if (dist < 35) {
+            (window as any).__activeLights = ((window as any).__activeLights || 0) + 2;
+          }
+        }
+      }
     } catch {}
   });
 

@@ -19,23 +19,24 @@ const ROADS: RoadSegment[] = [
 
 export function Roads() {
   const roadMaterial = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#2e2e32',
-    roughness: 0.88,
-    metalness: 0.04,
+    color: '#3a3a40',
+    roughness: 0.82,
+    metalness: 0.06,
   }), []);
 
   const markingMaterial = useMemo(() => new THREE.MeshStandardMaterial({
     color: '#e8e0b0',
-    roughness: 0.9,
-    metalness: 0,
+    roughness: 0.75,
+    metalness: 0.02,
     polygonOffset: true,
     polygonOffsetFactor: -3,
     polygonOffsetUnits: -3,
   }), []);
 
   const whiteMarkingMat = useMemo(() => new THREE.MeshStandardMaterial({
-    color: '#f0f0f0',
-    roughness: 0.8,
+    color: '#f5f5f5',
+    roughness: 0.65,
+    metalness: 0.05,
     polygonOffset: true,
     polygonOffsetFactor: -3,
     polygonOffsetUnits: -3,

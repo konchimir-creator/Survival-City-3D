@@ -71,6 +71,14 @@ function Building({ def }: { def: BuildingDef }) {
   const windowLightsRef = useRef<THREE.Group>(null);
   const buildingRef = useRef<THREE.Group>(null);
 
+  const lightState = useMemo(() => {
+    // OFF/DIM/ON per window - for readable night city
+    const r = Math.random();
+    if (r < 0.35) return 'OFF' as const;
+    if (r < 0.65) return 'DIM' as const;
+    return 'ON' as const;
+  }, []);
+
   useFrame(() => {
     try {
       const tod = (window as any).__timeOfDay || 'day';
@@ -79,30 +87,45 @@ function Building({ def }: { def: BuildingDef }) {
       let near = true;
       if (camPos && buildingRef.current) {
         const dist = buildingRef.current.getWorldPosition(new THREE.Vector3()).distanceTo(camPos);
-        near = dist < 35;
+        near = dist < 45;
       }
       if (signMatRef.current) {
         if (type === 'shop' || type === 'cafe' || type === 'police') {
-          signMatRef.current.emissiveIntensity = isNight ? 0.5 : 0.15;
+          signMatRef.current.emissiveIntensity = isNight ? 0.65 : 0.18;
         } else {
-          signMatRef.current.emissiveIntensity = isNight ? 0.15 : 0;
+          signMatRef.current.emissiveIntensity = isNight ? 0.20 : 0;
         }
       }
       if (doorLightRef.current) {
+        let active = false;
         if (type === 'shop' || type === 'cafe') {
-          doorLightRef.current.intensity = isNight && near ? 8 : 0;
+          doorLightRef.current.intensity = isNight && near ? 10 : 0;
+          active = isNight && near;
         } else if (type === 'residential') {
-          doorLightRef.current.intensity = isNight && near ? 1.5 : 0;
+          doorLightRef.current.intensity = isNight && near ? 2.2 : 0;
+          active = isNight && near;
         } else {
           doorLightRef.current.intensity = 0;
         }
+        if (active) (window as any).__activeLights = ((window as any).__activeLights || 0) + 1;
       }
       if (windowLightsRef.current) {
         windowLightsRef.current.visible = isNight;
-        // Hide pointLights if far
         windowLightsRef.current.traverse((obj:any)=>{
           if (obj.isPointLight) {
-            obj.intensity = isNight && near ? obj.userData.baseIntensity || 1.2 : 0;
+            const on = isNight && near && obj.userData.lightState !== 'OFF';
+            obj.intensity = on ? obj.userData.baseIntensity || 1.5 : 0;
+            if (on) (window as any).__activeLights = ((window as any).__activeLights || 0) + 1;
+          }
+          if (obj.isMesh && obj.userData.isWindowLit) {
+            const st = obj.userData.lightState;
+            if (st === 'OFF') {
+              obj.material.emissiveIntensity = isNight ? 0.05 : 0;
+            } else if (st === 'DIM') {
+              obj.material.emissiveIntensity = isNight ? 0.35 : 0;
+            } else {
+              obj.material.emissiveIntensity = isNight ? 0.85 : 0;
+            }
           }
         });
       }
@@ -303,20 +326,29 @@ function Building({ def }: { def: BuildingDef }) {
           decay={2}
         />
 
-        {/* Window lights at night - only visible at night, avoid z-fighting with offset 0.14 */}
+        {/* Window lights at night - OFF/DIM/ON states for readable night city */}
         <group ref={windowLightsRef}>
-          {type === 'residential' && Array.from({ length: 3 }).map((_, i) => (
-            <group key={`winlight-${i}`} position={[size[0]/2 - 1 - i*3, floorHeight + 2 + (i%2)*2.8, size[2]/2 + 0.14]}>
-              <mesh>
-                <planeGeometry args={[1.0, 1.0]} />
-                <primitive object={windowLitMat} attach="material" />
-              </mesh>
-              <pointLight position={[0, 0, 0.5]} intensity={0} distance={8} color="#ffcc88" decay={2} userData={{ baseIntensity: 1.2 }} />
-            </group>
-          ))}
+          {type === 'residential' && Array.from({ length: 4 }).map((_, i) => {
+            const state = i === 0 ? 'ON' : i === 1 ? (Math.random() > 0.5 ? 'DIM' : 'ON') : i === 2 ? 'DIM' : 'OFF';
+            const intensity = state === 'OFF' ? 0 : state === 'DIM' ? 0.9 : 1.8;
+            return (
+              <group key={`winlight-${i}`} position={[size[0]/2 - 1.2 - i*2.8, floorHeight + 2 + (i%2)*2.8, size[2]/2 + 0.14]}>
+                <mesh userData={{ isWindowLit: true, lightState: state }}>
+                  <planeGeometry args={[1.0, 1.0]} />
+                  <meshStandardMaterial color={state === 'OFF' ? '#1a1a2a' : '#ffcc88'} emissive={state === 'OFF' ? '#000000' : '#ffaa44'} emissiveIntensity={state === 'OFF' ? 0 : state === 'DIM' ? 0.35 : 0.85} roughness={0.4} />
+                </mesh>
+                <pointLight position={[0, 0, 0.6]} intensity={0} distance={10} color="#ffcc88" decay={2} userData={{ baseIntensity: intensity, lightState: state }} />
+              </group>
+            );
+          })}
           {(type === 'shop' || type === 'cafe' || type === 'internet_cafe') && (
             <group position={[0, 1.5, size[2]/2 + 0.5]}>
-              <pointLight intensity={0} distance={10} color="#ffcc88" decay={2} userData={{ baseIntensity: 2 }} />
+              <pointLight intensity={0} distance={14} color="#ffcc88" decay={2} userData={{ baseIntensity: 3, lightState: 'ON' }} />
+            </group>
+          )}
+          {(type === 'police' || type === 'medical') && (
+            <group position={[0, 2, size[2]/2 + 0.5]}>
+              <pointLight intensity={0} distance={12} color="#aaccff" decay={2} userData={{ baseIntensity: 1.5, lightState: 'ON' }} />
             </group>
           )}
         </group>

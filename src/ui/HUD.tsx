@@ -27,6 +27,10 @@ function DebugOverlay() {
       const playerAnimation = (window as any).__playerAnimation || 'idle';
       const animationSpeed = (window as any).__animationSpeed || '1.00';
       const skeletonLoaded = (window as any).__skeletonLoaded;
+      const activeLights = (window as any).__activeLights || 0;
+      const shadowLights = (window as any).__shadowLights || 0;
+      const nightLighting = (window as any).__nightLighting;
+      const buildingDims = (window as any).__lastBuildingDims;
       
       setShowDebug(!!show);
       if (show) {
@@ -55,6 +59,10 @@ function DebugOverlay() {
           playerAnimation,
           animationSpeed,
           skeletonLoaded,
+          activeLights,
+          shadowLights,
+          nightLighting,
+          buildingDims,
         });
       }
     }, 100);
@@ -81,6 +89,8 @@ function DebugOverlay() {
         <div>Player visible: {debugData.visible ? 'YES' : 'NO'}</div>
         <div>Spawn: {debugData.spawn ? `${debugData.spawn.x},${debugData.spawn.y},${debugData.spawn.z}` : 'none'}</div>
         <div>Camera collision: {debugData.camCollision === false ? 'DISABLED (fix)' : debugData.camCollision ? 'ON' : 'OFF'}</div>
+        <div className="mt-1 text-cyan-300">Active lights: {debugData.activeLights} | Shadow lights: {debugData.shadowLights}</div>
+        <div className="text-cyan-200 text-[10px]">Night: {debugData.nightLighting ? `amb ${debugData.nightLighting.ambient.toFixed(2)} hemi ${debugData.nightLighting.hemi.toFixed(2)} moon ${debugData.nightLighting.moon.toFixed(2)}` : 'n/a'} | {debugData.buildingDims || ''}</div>
         <div className="mt-2 pt-2 border-t border-white/10">
           <div className={debugData.playerRenderer === 'GLB' ? 'text-green-400 font-bold' : 'text-yellow-400 font-bold'}>Renderer: {debugData.playerRenderer} | Skeleton: {debugData.skeletonLoaded ? 'YES' : debugData.skeletonLoaded === false ? 'NO' : 'N/A (procedural)'} | Anim: {debugData.playerAnimation} x{debugData.animationSpeed}</div>
           <div>VisualFeetY: {debugData.input?.visualFeetY || 'n/a'} | Move: {debugData.transform ? (Math.sqrt(parseFloat(debugData.transform.vx)**2 + parseFloat(debugData.transform.vz)**2)).toFixed(2)+' m/s' : 'n/a'}</div>

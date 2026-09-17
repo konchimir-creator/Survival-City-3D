@@ -17,9 +17,9 @@ export function Ground() {
   }), []);
 
   const asphaltBase = useMemo(() => new THREE.MeshStandardMaterial({ 
-    color: '#2a2a2e', 
-    roughness: 0.94, 
-    metalness: 0.02,
+    color: '#3a3a40', 
+    roughness: 0.90, 
+    metalness: 0.03,
   }), []);
 
   const concreteSlab = useMemo(() => new THREE.MeshStandardMaterial({ 
