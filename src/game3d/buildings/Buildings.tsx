@@ -385,8 +385,8 @@ export function Buildings() {
         ))}
       </group>
 
-      {/* Walls around abandoned */}
-      <RigidBody type="fixed" colliders="cuboid" position={[-110, 1, -20]}>
+      {/* Walls around abandoned - moved to not overlap building at -20 */}
+      <RigidBody type="fixed" colliders="cuboid" position={[-110, 1, -32]}>
         <mesh castShadow receiveShadow>
           <boxGeometry args={[20, 2.2, 0.35]} />
           <meshStandardMaterial color="#4a4a4a" roughness={0.95} />
@@ -394,7 +394,7 @@ export function Buildings() {
       </RigidBody>
       
       {/* Graffiti - offset to avoid z-fighting */}
-      <group position={[-110, 1.5, -9.75]}>
+      <group position={[-110, 1.5, -31.75]}>
         <mesh>
           <planeGeometry args={[4, 1.2]} />
           <meshStandardMaterial color="#aa2222" roughness={0.9} transparent opacity={0.6} polygonOffset polygonOffsetFactor={-1} />

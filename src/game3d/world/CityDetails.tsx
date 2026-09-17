@@ -388,13 +388,13 @@ export function CityDetails() {
         </group>
       ))}
 
-      {/* Bus stops - NORMAL per task */}
-      <BusStop position={[20, 0.02, 58]} rotation={0} />
-      <BusStop position={[-20, 0.02, 8.5]} rotation={Math.PI/2} />
-      <BusStop position={[60, 0.02, 15]} rotation={0} />
-      <BusStop position={[-70, 0.02, -15]} rotation={Math.PI} />
-      <BusStop position={[0, 0.02, 60]} rotation={0} />
-      <BusStop position={[0, 0.02, -50]} rotation={Math.PI} />
+      {/* Bus stops - placed on sidewalk near curb, oriented along road, NOT on road */}
+      <BusStop position={[20, 0.02, 65]} rotation={0} />
+      <BusStop position={[-20, 0.02, -45]} rotation={0} />
+      <BusStop position={[65, 0.02, 15]} rotation={Math.PI/2} />
+      <BusStop position={[-65, 0.02, -15]} rotation={Math.PI/2} />
+      <BusStop position={[6.5, 0.02, 30]} rotation={Math.PI/2} />
+      <BusStop position={[-6.5, 0.02, -30]} rotation={Math.PI/2} />
 
       {/* Billboard - improved, not ghost */}
       <group position={[120, 0.02, 0]} rotation={[0, -Math.PI/2, 0]}>
