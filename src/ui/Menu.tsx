@@ -7,6 +7,7 @@ export function Menu() {
   const setOpen = useGameStore((s) => s.setMenuOpen);
   const settings = useGameStore((s) => s.settings);
   const setGraphics = useGameStore((s) => s.setGraphics);
+  const setInvertY = useGameStore((s) => s.setInvertY);
   const saveGame = useGameStore((s) => s.saveGame);
   const newGame = useGameStore((s) => s.newGame);
 
@@ -69,6 +70,22 @@ export function Menu() {
                 {settings.graphics === 'low' && 'Минимум теней, меньше NPC, дальность'}
                 {settings.graphics === 'medium' && 'Баланс качества и производительности'}
                 {settings.graphics === 'high' && 'Максимум качества, тени, NPC'}
+              </div>
+            </div>
+
+            <div className="bg-[#2a2a2a] rounded p-4">
+              <h3 className="font-bold mb-3">Камера</h3>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Invert Y: {settings.invertY ? 'ON' : 'OFF'}</span>
+                <button
+                  onClick={() => setInvertY(!settings.invertY)}
+                  className={`px-4 py-1.5 rounded text-sm ${settings.invertY ? 'bg-green-700' : 'bg-[#444] hover:bg-[#555]'}`}
+                >
+                  {settings.invertY ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              <div className="text-xs text-gray-400 mt-2">
+                OFF: мышь вверх → камера выше (естественно). ON: наоборот.
               </div>
             </div>
 

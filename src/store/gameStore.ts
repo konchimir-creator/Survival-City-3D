@@ -23,6 +23,7 @@ interface SettingsState {
   volume: number;
   fov: number;
   showFPS: boolean;
+  invertY: boolean;
 }
 
 interface GameStore {
@@ -73,6 +74,7 @@ interface GameStore {
   
   settings: SettingsState;
   setGraphics: (g: SettingsState['graphics']) => void;
+  setInvertY: (v: boolean) => void;
   
   lastUpdate: number;
   tick: (deltaTime: number) => void;
@@ -337,8 +339,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     volume: 0.7,
     fov: 65,
     showFPS: false,
+    invertY: false,
   },
   setGraphics: (g) => set((s) => ({ settings: { ...s.settings, graphics: g } })),
+  setInvertY: (v) => set((s) => ({ settings: { ...s.settings, invertY: v } })),
 
   lastUpdate: Date.now(),
   tick: (deltaTime) => {
@@ -406,7 +410,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         graphics: state.settings.graphics,
         mouseSensitivity: state.settings.mouseSensitivity,
         volume: state.settings.volume,
-      },
+        invertY: state.settings.invertY,
+      } as any,
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -471,6 +476,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           graphics: data.settings?.graphics || s.settings.graphics,
           mouseSensitivity: data.settings?.mouseSensitivity ?? s.settings.mouseSensitivity,
           volume: data.settings?.volume ?? s.settings.volume,
+          invertY: (data.settings as any)?.invertY ?? s.settings.invertY ?? false,
         },
       }));
 

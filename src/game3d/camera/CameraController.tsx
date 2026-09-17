@@ -57,7 +57,6 @@ export function CameraController() {
       const isPointerLocked = !!document.pointerLockElement;
       const isDragging = isDraggingRef.current;
 
-      // If not pointer locked and not dragging, ignore (unless we want fallback)
       if (!isPointerLocked && !isDragging) return;
       if (isInShopInterior) return;
 
@@ -70,20 +69,32 @@ export function CameraController() {
       mouseDeltaRef.current.x = mx;
       mouseDeltaRef.current.y = my;
 
-      // Horizontal mouse -> YAW, Vertical -> PITCH (per task 2)
-      // Yaw unrestricted 360°, pitch clamped
       const prevYaw = yawRef.current;
       prevYawRef.current = prevYaw;
 
-      // Standard third-person: mouse right -> yaw decreases? Let's use typical: mouse right -> camera orbits right, yaw -= dx * sens
-      // At yaw0 camera behind, mouse right should orbit camera to right side (yaw negative? need consistent)
-      // Use: yaw -= mx * sensitivity, pitch -= my * sensitivity
+      const invertY = store.settings.invertY ?? false;
+
+      // Horizontal mouse -> YAW (unchanged)
       yawRef.current -= mx * MOUSE_SENSITIVITY;
-      const newPitch = THREE.MathUtils.clamp(
-        pitchRef.current - my * MOUSE_SENSITIVITY,
-        MIN_PITCH,
-        MAX_PITCH
-      );
+
+      // Vertical mouse -> PITCH - FIXED: invert sign per task, plus Invert Y setting
+      // OFF (default): mouse UP -> camera HIGHER
+      // Previous code was pitch -= my, which was inverted per production test, so now OFF = pitch += my
+      let pitchDelta = my * MOUSE_SENSITIVITY;
+      let newPitch: number;
+      if (!invertY) {
+        newPitch = THREE.MathUtils.clamp(
+          pitchRef.current + pitchDelta,
+          MIN_PITCH,
+          MAX_PITCH
+        );
+      } else {
+        newPitch = THREE.MathUtils.clamp(
+          pitchRef.current - pitchDelta,
+          MIN_PITCH,
+          MAX_PITCH
+        );
+      }
       pitchRef.current = newPitch;
 
       // Mirror to globals for debug/F3, not source of truth
@@ -111,7 +122,9 @@ export function CameraController() {
 
     const handleMobileCamera = (e: any) => {
       const { dx, dy } = e.detail || {};
-      // Mobile: horizontal delta -> yaw, vertical -> pitch, same refs
+      const store = useGameStore.getState();
+      const invertY = store.settings.invertY ?? false;
+      // Mobile: horizontal delta -> yaw, vertical -> pitch, same refs, same invert logic
       if (dx !== undefined) {
         const prevYaw = yawRef.current;
         prevYawRef.current = prevYaw;
@@ -120,11 +133,20 @@ export function CameraController() {
         mouseDeltaRef.current.x = dx;
       }
       if (dy !== undefined) {
-        const newPitch = THREE.MathUtils.clamp(
-          pitchRef.current - dy * 0.005,
-          MIN_PITCH,
-          MAX_PITCH
-        );
+        let newPitch: number;
+        if (!invertY) {
+          newPitch = THREE.MathUtils.clamp(
+            pitchRef.current + dy * 0.005,
+            MIN_PITCH,
+            MAX_PITCH
+          );
+        } else {
+          newPitch = THREE.MathUtils.clamp(
+            pitchRef.current - dy * 0.005,
+            MIN_PITCH,
+            MAX_PITCH
+          );
+        }
         pitchRef.current = newPitch;
         (window as any).__cameraPitch = newPitch;
         mouseDeltaRef.current.y = dy;
