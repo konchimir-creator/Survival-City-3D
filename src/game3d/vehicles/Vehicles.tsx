@@ -1,8 +1,10 @@
 'use client';
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
+import { GLBCar } from './GLBCar';
+import { VehicleErrorBoundary } from './VehicleErrorBoundary';
 
 interface VehicleData {
   id: string;
@@ -11,6 +13,7 @@ interface VehicleData {
   rotation: number;
   speed: number;
   color: string;
+  tint: string;
   route: { x: number; z: number }[];
   routeIndex: number;
 }
@@ -23,6 +26,8 @@ function createVehicles(count: number): VehicleData[] {
     van: '#d0d0d0',
     police: '#1a3a5a',
   };
+  // Tint multiplies the white GLB texture -> real body colors
+  const sedanTints = ['#f2f4f7', '#c7d3e2', '#8fa1b3', '#42474e', '#a8352c', '#2c5a3f'];
 
   const roadLoop1 = [
     { x: -140, z: 1.5 }, { x: -70, z: 1.5 }, { x: 0, z: 1.5 }, { x: 60, z: 1.5 }, { x: 140, z: 1.5 },
@@ -41,7 +46,12 @@ function createVehicles(count: number): VehicleData[] {
     const route = i % 2 === 0 ? roadLoop1 : roadLoop2;
     const idx = Math.floor(Math.random() * route.length);
     const pos = route[idx];
-    
+
+    let tint = sedanTints[i % sedanTints.length];
+    if (type === 'taxi') tint = '#f2c028';
+    else if (type === 'police') tint = '#edf2f7';
+    else if (type === 'van') tint = '#d0d0d0';
+
     vehicles.push({
       id: `veh-${i}`,
       type,
@@ -49,6 +59,7 @@ function createVehicles(count: number): VehicleData[] {
       rotation: 0,
       speed: 5 + Math.random() * 3,
       color: colors[type],
+      tint,
       route,
       routeIndex: idx,
     });
@@ -56,76 +67,24 @@ function createVehicles(count: number): VehicleData[] {
   return vehicles;
 }
 
-function Vehicle({ data }: { data: VehicleData }) {
-  const meshRef = useRef<THREE.Group>(null);
-  const wheelRefs = useRef<THREE.Mesh[]>([]);
-  const headLightRefs = useRef<THREE.MeshStandardMaterial[]>([]);
-  const tailLightRefs = useRef<THREE.MeshStandardMaterial[]>([]);
+interface BodyProps {
+  data: VehicleData;
+  wheelRefs: React.MutableRefObject<THREE.Mesh[]>;
+  headLightRefs: React.MutableRefObject<THREE.MeshStandardMaterial[]>;
+  tailLightRefs: React.MutableRefObject<THREE.MeshStandardMaterial[]>;
+}
 
-  useFrame((state, delta) => {
-    if (!meshRef.current) return;
-
-    const camPos = (window as any).__cameraPosition as THREE.Vector3;
-    if (camPos) {
-      const dist = meshRef.current.position.distanceTo(camPos);
-      if (dist > 80 && Math.random() < 0.5) return;
-    }
-
-    const target = data.route[data.routeIndex];
-    const targetVec = new THREE.Vector3(target.x, 0, target.z);
-    const dir = new THREE.Vector3().subVectors(targetVec, data.position);
-    const dist = dir.length();
-
-    if (dist < 2.5) {
-      data.routeIndex = (data.routeIndex + 1) % data.route.length;
-    } else {
-      dir.normalize();
-      const move = dir.multiplyScalar(data.speed * delta);
-      data.position.add(move);
-      
-      const targetRot = Math.atan2(dir.x, dir.z);
-      let diff = targetRot - data.rotation;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      data.rotation += diff * delta * 2.5;
-    }
-
-    meshRef.current.position.copy(data.position);
-    meshRef.current.position.y = 0.34; // wheel radius 0.32 + 0.02 contact
-    meshRef.current.rotation.y = data.rotation;
-
-    wheelRefs.current.forEach((wheel) => {
-      if (wheel) wheel.rotation.x += delta * data.speed * 2.5;
-    });
-
-    try {
-      const tod = (window as any).__timeOfDay || 'day';
-      const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
-      headLightRefs.current.forEach(m => {
-        if (m) m.emissiveIntensity = isNight ? 1.6 : 0.35;
-      });
-      tailLightRefs.current.forEach(m => {
-        if (m) m.emissiveIntensity = isNight ? 1.2 : 0.25;
-      });
-      if (isNight) {
-        const camPos = (window as any).__cameraPosition as THREE.Vector3;
-        if (camPos && meshRef.current) {
-          const dist = meshRef.current.position.distanceTo(camPos);
-          if (dist < 35) {
-            (window as any).__activeLights = ((window as any).__activeLights || 0) + 2;
-          }
-        }
-      }
-    } catch {}
-  });
-
+// Original placeholder built from boxes. Still used for the van and as a
+// fallback when the GLB is unavailable (ErrorBoundary/Suspense).
+// Wrapped in a 0.34 lift so wheels touch ground at group origin, like the GLB.
+function ProceduralCarBody({ data, wheelRefs, headLightRefs, tailLightRefs }: BodyProps) {
   const isVan = data.type === 'van';
   const isPolice = data.type === 'police';
   const isTaxi = data.type === 'taxi';
 
   // Realistic sedan: length 4.5m, width 1.8m, height 1.5m, wheel radius 0.32m
   return (
-    <group ref={meshRef}>
+    <group position={[0, 0.34, 0]}>
       {/* Chassis lower */}
       <mesh castShadow receiveShadow position={[0, 0.42, 0]}>
         <boxGeometry args={isVan ? [1.9, 0.55, 5.0] : [1.8, 0.48, 4.5]} />
@@ -147,7 +106,7 @@ function Vehicle({ data }: { data: VehicleData }) {
           <meshStandardMaterial color={data.color} roughness={0.32} metalness={0.38} />
         </mesh>
       )}
-      
+
       {/* Cabin/roof */}
       <mesh castShadow position={[0, 1.02, isVan ? -0.2 : -0.15]}>
         <boxGeometry args={isVan ? [1.85, 0.78, 2.8] : [1.68, 0.62, 2.1]} />
@@ -235,7 +194,7 @@ function Vehicle({ data }: { data: VehicleData }) {
         <boxGeometry args={[0.14, 0.14, 0.05]} />
         <meshStandardMaterial ref={(el:any)=>{ if(el) tailLightRefs.current[1]=el; }} color="#ff2222" emissive="#ff0000" emissiveIntensity={0.4} />
       </mesh>
-      
+
       {isTaxi && (
         <group position={[0, 1.42, -0.1]}>
           <mesh castShadow>
@@ -274,10 +233,154 @@ function Vehicle({ data }: { data: VehicleData }) {
   );
 }
 
+// GLB sports car body + game add-ons (lights, taxi sign, police bar).
+// Positions matched to the 4.3m sports car: nose z=+2.15, rear wing area z=-2.0.
+function GLBCarBody({ data, headLightRefs, tailLightRefs }: BodyProps) {
+  const isPolice = data.type === 'police';
+  const isTaxi = data.type === 'taxi';
+
+  return (
+    <group>
+      <GLBCar tint={data.tint} />
+
+      {/* Headlights at the nose */}
+      <mesh position={[-0.60, 0.55, 2.06]}>
+        <sphereGeometry args={[0.10, 10, 10]} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) headLightRefs.current[0]=el; }} color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.5} />
+      </mesh>
+      <mesh position={[0.60, 0.55, 2.06]}>
+        <sphereGeometry args={[0.10, 10, 10]} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) headLightRefs.current[1]=el; }} color="#ffffcc" emissive="#ffffaa" emissiveIntensity={0.5} />
+      </mesh>
+
+      {/* Taillights on the rear deck */}
+      <mesh position={[-0.62, 0.72, -2.03]}>
+        <boxGeometry args={[0.16, 0.10, 0.05]} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) tailLightRefs.current[0]=el; }} color="#ff2222" emissive="#ff0000" emissiveIntensity={0.4} />
+      </mesh>
+      <mesh position={[0.62, 0.72, -2.03]}>
+        <boxGeometry args={[0.16, 0.10, 0.05]} />
+        <meshStandardMaterial ref={(el:any)=>{ if(el) tailLightRefs.current[1]=el; }} color="#ff2222" emissive="#ff0000" emissiveIntensity={0.4} />
+      </mesh>
+
+      {isTaxi && (
+        <group position={[0, 1.34, -0.15]}>
+          <mesh castShadow>
+            <boxGeometry args={[0.60, 0.15, 0.22]} />
+            <meshStandardMaterial color="#fff6d0" emissive="#ffee88" emissiveIntensity={0.35} roughness={0.6} />
+          </mesh>
+        </group>
+      )}
+
+      {isPolice && (
+        <>
+          <mesh position={[-0.24, 1.32, -0.15]} castShadow>
+            <boxGeometry args={[0.20, 0.09, 0.36]} />
+            <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={1.2} />
+          </mesh>
+          <mesh position={[0.24, 1.32, -0.15]} castShadow>
+            <boxGeometry args={[0.20, 0.09, 0.36]} />
+            <meshStandardMaterial color="#0000ff" emissive="#0000ff" emissiveIntensity={1.2} />
+          </mesh>
+        </>
+      )}
+    </group>
+  );
+}
+
+// Van keeps the boxy procedural body (a sports car can't be a cargo van);
+// all passenger cars use the GLB with safe procedural fallback.
+function VehicleBody(props: BodyProps) {
+  const procedural = <ProceduralCarBody {...props} />;
+  if (props.data.type === 'van') return procedural;
+  return (
+    <VehicleErrorBoundary fallback={procedural}>
+      <Suspense fallback={procedural}>
+        <GLBCarBody {...props} />
+      </Suspense>
+    </VehicleErrorBoundary>
+  );
+}
+
+function Vehicle({ data }: { data: VehicleData }) {
+  const meshRef = useRef<THREE.Group>(null);
+  const wheelRefs = useRef<THREE.Mesh[]>([]);
+  const headLightRefs = useRef<THREE.MeshStandardMaterial[]>([]);
+  const tailLightRefs = useRef<THREE.MeshStandardMaterial[]>([]);
+
+  useFrame((state, delta) => {
+    if (!meshRef.current) return;
+
+    const camPos = (window as any).__cameraPosition as THREE.Vector3;
+    if (camPos) {
+      const dist = meshRef.current.position.distanceTo(camPos);
+      if (dist > 80 && Math.random() < 0.5) return;
+    }
+
+    const target = data.route[data.routeIndex];
+    const targetVec = new THREE.Vector3(target.x, 0, target.z);
+    const dir = new THREE.Vector3().subVectors(targetVec, data.position);
+    const dist = dir.length();
+
+    if (dist < 2.5) {
+      data.routeIndex = (data.routeIndex + 1) % data.route.length;
+    } else {
+      dir.normalize();
+      const move = dir.multiplyScalar(data.speed * delta);
+      data.position.add(move);
+
+      const targetRot = Math.atan2(dir.x, dir.z);
+      let diff = targetRot - data.rotation;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      data.rotation += diff * delta * 2.5;
+    }
+
+    meshRef.current.position.copy(data.position);
+    meshRef.current.position.y = 0; // bodies are self-lifted so wheels touch ground
+    meshRef.current.rotation.y = data.rotation;
+
+    wheelRefs.current.forEach((wheel) => {
+      if (wheel) wheel.rotation.x += delta * data.speed * 2.5;
+    });
+
+    try {
+      const tod = (window as any).__timeOfDay || 'day';
+      const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
+      headLightRefs.current.forEach(m => {
+        if (m) m.emissiveIntensity = isNight ? 1.6 : 0.35;
+      });
+      tailLightRefs.current.forEach(m => {
+        if (m) m.emissiveIntensity = isNight ? 1.2 : 0.25;
+      });
+      if (isNight) {
+        const camPos = (window as any).__cameraPosition as THREE.Vector3;
+        if (camPos && meshRef.current) {
+          const dist = meshRef.current.position.distanceTo(camPos);
+          if (dist < 35) {
+            (window as any).__activeLights = ((window as any).__activeLights || 0) + 2;
+          }
+        }
+      }
+    } catch {}
+  });
+
+  return (
+    <group ref={meshRef}>
+      <VehicleBody
+        data={data}
+        wheelRefs={wheelRefs}
+        headLightRefs={headLightRefs}
+        tailLightRefs={tailLightRefs}
+      />
+    </group>
+  );
+}
+
 export function Vehicles() {
   const settings = useGameStore((s) => s.settings);
   const count = settings.graphics === 'low' ? 3 : settings.graphics === 'medium' ? 6 : 10;
-  
+
   const vehicles = useMemo(() => createVehicles(count), [count]);
 
   return (
