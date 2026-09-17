@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { BUILDINGS, BuildingDef } from '@/game/world/types';
+import { AbandonedHouseReal } from './RealBuilding';
 
 function Building({ def }: { def: BuildingDef }) {
   const { position, size, type, rotation = 0 } = def;
@@ -360,9 +361,13 @@ function Building({ def }: { def: BuildingDef }) {
 export function Buildings() {
   return (
     <group>
-      {BUILDINGS.map((b) => (
-        <Building key={b.id} def={b} />
-      ))}
+      {BUILDINGS.map((b) => {
+        // Replace one procedural abandoned house with real GLB if exists, fallback procedural
+        if (b.id === 'abandoned_1') {
+          return <AbandonedHouseReal key={b.id} def={b} />;
+        }
+        return <Building key={b.id} def={b} />;
+      })}
 
       {/* Fence */}
       <group>
