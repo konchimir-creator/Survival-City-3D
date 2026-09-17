@@ -20,14 +20,6 @@ import { useGameStore } from '@/store/gameStore';
 
 function SceneContent() {
   const isInShopInterior = useGameStore((s) => s.isInShopInterior);
-  const settings = useGameStore((s) => s.settings);
-  const [physicsReady, setPhysicsReady] = useState(false);
-
-  useEffect(() => {
-    // Mark physics as ready after short delay to ensure Rapier loaded
-    const t = setTimeout(() => setPhysicsReady(true), 100);
-    return () => clearTimeout(t);
-  }, []);
 
   if (isInShopInterior) {
     return (
@@ -39,6 +31,9 @@ function SceneContent() {
     );
   }
 
+  // Correct structure: everything that needs Rapier is inside Physics
+  // CameraController uses useRapier, so MUST be inside Physics
+  // Player uses useRapier, must be inside Physics
   return (
     <>
       <Lighting />
@@ -53,6 +48,7 @@ function SceneContent() {
       <Player />
       <InteractionSystem />
       <Weather />
+      <CameraController />
     </>
   );
 }
@@ -82,7 +78,6 @@ function CanvasWrapper({ onReady }: { onReady: () => void }) {
     ? (settings.graphics === 'low' ? 1 : settings.graphics === 'medium' ? Math.min(1.5, window.devicePixelRatio || 1) : Math.min(2, window.devicePixelRatio || 1))
     : 1;
 
-  // Mobile detection for auto LOW
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -97,6 +92,7 @@ function CanvasWrapper({ onReady }: { onReady: () => void }) {
         <div className="text-center">
           <h2 className="text-xl text-red-400 mb-2">WebGL ошибка</h2>
           <p className="text-sm text-gray-400">Не удалось создать WebGL контекст</p>
+          <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-[#333] rounded">Перезагрузить</button>
         </div>
       </div>
     );
@@ -113,24 +109,26 @@ function CanvasWrapper({ onReady }: { onReady: () => void }) {
         stencil: false,
         depth: true,
       }}
-      onCreated={({ gl, scene }) => {
+      onCreated={({ gl }) => {
         try {
           gl.shadowMap.enabled = settings.graphics !== 'low';
           gl.shadowMap.type = THREE.PCFSoftShadowMap;
           
-          // WebGL context lost handling
           gl.domElement.addEventListener('webglcontextlost', (e) => {
             e.preventDefault();
             console.error('[WebGL] Context lost');
             (window as any).__webGLContextLost = true;
+            const el = document.getElementById('webgl-lost');
+            if (el) el.classList.remove('hidden');
           });
           
           gl.domElement.addEventListener('webglcontextrestored', () => {
             console.log('[WebGL] Context restored');
             (window as any).__webGLContextLost = false;
+            const el = document.getElementById('webgl-lost');
+            if (el) el.classList.add('hidden');
           });
 
-          // Mark as ready
           setTimeout(() => onReady(), 500);
         } catch (e) {
           console.error('[Canvas] onCreated error', e);
@@ -138,13 +136,14 @@ function CanvasWrapper({ onReady }: { onReady: () => void }) {
         }
       }}
     >
+      {/* CORRECT ARCHITECTURE: Physics is parent of all components using useRapier */}
       <Suspense fallback={null}>
         <Physics gravity={[0, -9.81, 0]} timeStep="vary">
           <SceneContent />
         </Physics>
         <Preload all />
       </Suspense>
-      <CameraController />
+      {/* CameraController REMOVED from here - now inside Physics via SceneContent */}
     </Canvas>
   );
 }
@@ -157,7 +156,6 @@ export function City3D() {
   const loadGame = useGameStore((s) => s.loadGame);
   const tick = useGameStore((s) => s.tick);
 
-  // Loading simulation with real steps
   useEffect(() => {
     let p = 0;
     const steps = [
@@ -179,18 +177,15 @@ export function City3D() {
       if (p >= 100) {
         p = 100;
         clearInterval(interval);
-        // Only hide loading when canvas is ready too
         if (canvasReady) {
           setTimeout(() => setIsLoading(false), 300);
         } else {
-          // Wait for canvas
           const check = setInterval(() => {
             if ((window as any).__canvasReady) {
               clearInterval(check);
               setIsLoading(false);
             }
           }, 100);
-          // Fallback timeout 5s
           setTimeout(() => {
             clearInterval(check);
             setIsLoading(false);
@@ -257,7 +252,6 @@ export function City3D() {
   return (
     <div className="w-full h-[100dvh] bg-black relative overflow-hidden">
       {isLoading && <LoadingScreen progress={progress} status={status} />}
-      
       <CanvasWrapper onReady={handleCanvasReady} />
     </div>
   );

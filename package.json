@@ -9,7 +9,8 @@
     "lint": "next lint",
     "sim": "tsx scripts/sim.ts",
     "smoke": "tsx scripts/runtime-smoke.ts",
-    "test": "npm run sim && npm run smoke"
+    "check-rapier": "tsx scripts/check-rapier-architecture.ts",
+    "test": "npm run sim && npm run smoke && npm run check-rapier"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.15.1",
