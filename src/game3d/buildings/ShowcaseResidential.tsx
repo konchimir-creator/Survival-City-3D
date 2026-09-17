@@ -1,5 +1,5 @@
 'use client';
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
@@ -7,196 +7,61 @@ import { BuildingDef } from '@/game/world/types';
 
 /**
  * Showcase realistic post-soviet residential building
- * One quality reference building, 1 unit = 1 meter
- * - Floor 2.8-3.2m (using 3m)
- * - Door 2.15m x 1.1m
- * - Window 1.3x1.5m sill 0.9m
- * - Plinth 0.6m
- * - Steps 0.16m
- * - Door opening physically free via compound CuboidColliders
- * - Small interior vestibule first floor
+ * Reference building - ONE quality showcase
+ * Dimensions single source of truth
  */
 
-function WindowSet({ x, y, z, isGroundFloor, floorIndex, windowIndex }: { x: number, y: number, z: number, isGroundFloor?: boolean, floorIndex: number, windowIndex: number }) {
-  // Random but deterministic based on floor/window index
-  const seed = floorIndex * 10 + windowIndex;
-  const rand = (n: number) => {
-    const s = Math.sin(seed * 999 + n * 123) * 10000;
-    return s - Math.floor(s);
-  };
-  const lightState = useMemo(() => {
-    const r = rand(1);
-    if (r < 0.45) return 'OFF';
-    if (r < 0.72) return 'DIM';
-    if (r < 0.88) return 'WARM';
-    return 'CURTAIN';
-  }, []);
-
-  const windowWidth = isGroundFloor ? 1.1 : 1.3;
-  const windowHeight = isGroundFloor ? 1.2 : 1.5;
-  const frameThickness = 0.06;
-  const recessDepth = 0.18;
-
-  const glassMat = useMemo(() => {
-    let color = '#2f3f4f';
-    let emissive = '#000000';
-    let emissiveIntensity = 0;
-    let roughness = 0.25;
-    if (lightState === 'WARM') {
-      color = '#ffcc88';
-      emissive = '#ffaa44';
-      emissiveIntensity = 0.85;
-      roughness = 0.4;
-    } else if (lightState === 'DIM') {
-      color = '#6a5a4a';
-      emissive = '#332211';
-      emissiveIntensity = 0.25;
-      roughness = 0.5;
-    } else if (lightState === 'CURTAIN') {
-      color = '#3a3a4a';
-      emissive = '#1a1a2a';
-      emissiveIntensity = 0.08;
-      roughness = 0.7;
-    } else {
-      color = '#2a3a4a';
-      emissive = '#000000';
-      emissiveIntensity = 0;
-      roughness = 0.25;
-    }
-    return new THREE.MeshStandardMaterial({
-      color,
-      emissive,
-      emissiveIntensity,
-      roughness,
-      metalness: 0.1,
-      transparent: lightState === 'OFF' ? false : false,
-    });
-  }, [lightState]);
-
-  const frameMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e8e8e8', roughness: 0.6, metalness: 0.1 }), []);
-  const sillMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#d8d8d8', roughness: 0.7 }), []);
-  const recessMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#1e1e1e', roughness: 0.9 }), []);
-
-  // For night emissive update via useFrame
-  const glassRef = useRef<THREE.MeshStandardMaterial>(null);
-  useFrame(() => {
-    try {
-      const tod = (window as any).__timeOfDay || 'day';
-      const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
-      if (glassRef.current) {
-        if (!isNight) {
-          // Day: dark glass
-          glassRef.current.color.set('#2a3a4a');
-          glassRef.current.emissive.set('#000000');
-          glassRef.current.emissiveIntensity = 0;
-        } else {
-          if (lightState === 'WARM') {
-            glassRef.current.color.set('#ffcc88');
-            glassRef.current.emissive.set('#ffaa44');
-            glassRef.current.emissiveIntensity = 0.85;
-          } else if (lightState === 'DIM') {
-            glassRef.current.color.set('#6a5a4a');
-            glassRef.current.emissive.set('#332211');
-            glassRef.current.emissiveIntensity = 0.25;
-          } else if (lightState === 'CURTAIN') {
-            glassRef.current.color.set('#3a3a4a');
-            glassRef.current.emissive.set('#1a1a2a');
-            glassRef.current.emissiveIntensity = 0.08;
-          } else {
-            glassRef.current.color.set('#1a2a3a');
-            glassRef.current.emissive.set('#000000');
-            glassRef.current.emissiveIntensity = 0.03;
-          }
-        }
-      }
-    } catch {}
-  });
-
-  return (
-    <group position={[x, y, z]}>
-      {/* Recess - dark interior depth */}
-      <mesh position={[0, 0, -recessDepth/2 + 0.02]} castShadow receiveShadow>
-        <boxGeometry args={[windowWidth + 0.08, windowHeight + 0.08, recessDepth]} />
-        <primitive object={recessMat} attach="material" />
-      </mesh>
-      {/* Frame - outer */}
-      <mesh position={[0, 0, 0.02]} castShadow>
-        <boxGeometry args={[windowWidth + frameThickness*2, windowHeight + frameThickness*2, 0.06]} />
-        <primitive object={frameMat} attach="material" />
-      </mesh>
-      {/* Frame inner cross - for realism */}
-      <mesh position={[0, 0, 0.03]} castShadow>
-        <boxGeometry args={[windowWidth, 0.04, 0.04]} />
-        <primitive object={frameMat} attach="material" />
-      </mesh>
-      <mesh position={[0, 0, 0.03]} castShadow>
-        <boxGeometry args={[0.04, windowHeight, 0.04]} />
-        <primitive object={frameMat} attach="material" />
-      </mesh>
-      {/* Glass */}
-      <mesh position={[0, 0, 0.05]}>
-        <planeGeometry args={[windowWidth - 0.02, windowHeight - 0.02]} />
-        <primitive object={glassMat} attach="material" ref={glassRef as any} />
-      </mesh>
-      {/* Sill */}
-      <mesh position={[0, -windowHeight/2 - 0.06, 0.08]} castShadow receiveShadow>
-        <boxGeometry args={[windowWidth + 0.2, 0.08, 0.14]} />
-        <primitive object={sillMat} attach="material" />
-      </mesh>
-      {/* Small streak/dirt under window - controlled wear */}
-      {rand(2) > 0.6 && (
-        <mesh position={[0, -windowHeight/2 - 0.18, 0.03]}>
-          <planeGeometry args={[0.3, 0.25]} />
-          <meshStandardMaterial color="#3a3a3a" transparent opacity={0.18} roughness={0.95} />
-        </mesh>
-      )}
-    </group>
-  );
-}
+// Dimensions - single source of truth per task
+const DIMS = {
+  width: 20, // X
+  height: 18, // Y
+  depth: 16, // Z
+  floorHeight: 3.0, // 2.8-3.2
+  plinthHeight: 0.6, // 0.4-0.8
+  doorWidth: 1.1, // 0.9-1.2
+  doorHeight: 2.15, // 2.0-2.2
+  windowWidth: 1.3, // 1.2-1.6
+  windowHeight: 1.5, // 1.3-1.7
+  sillHeight: 0.9, // 0.8-1.0
+  wallThickness: 0.35,
+  stepHeight: 0.16, // 0.15-0.18
+  recessDepth: 0.18,
+};
 
 export function ShowcaseResidential({ def }: { def: BuildingDef }) {
-  const { position, size, rotation = 0 } = def;
-  // size [20,18,16] => W 20, H 18, D 16
-  const width = size[0];
-  const height = size[1];
-  const depth = size[2];
-
-  const floorHeight = 3.0;
+  const { position, rotation = 0 } = def;
+  // Use DIMS as source, but allow def.size as fallback for placement check
+  const width = DIMS.width;
+  const height = DIMS.height;
+  const depth = DIMS.depth;
+  const floorHeight = DIMS.floorHeight;
   const floors = Math.floor(height / floorHeight); // 6
-  const plinthHeight = 0.6;
-  const doorWidth = 1.1;
-  const doorHeight = 2.15;
-  const doorX = 0; // centered on front facade, matches collider opening
+  const plinthHeight = DIMS.plinthHeight;
+  const doorWidth = DIMS.doorWidth;
+  const doorHeight = DIMS.doorHeight;
+  const wallThickness = DIMS.wallThickness;
+  const stepHeight = DIMS.stepHeight;
+
+  // Door at front center, facing +Z towards sidewalk
+  const doorX = 0;
   const doorZ = depth / 2;
 
-  const wallThickness = 0.35;
-
-  // Materials - post-soviet plaster with close shades
-  const plasterMain = useMemo(() => new THREE.MeshStandardMaterial({ color: '#b8a898', roughness: 0.88, metalness: 0.02 }), []);
-  const plasterDark = useMemo(() => new THREE.MeshStandardMaterial({ color: '#a89888', roughness: 0.90 }), []);
-  const plasterLight = useMemo(() => new THREE.MeshStandardMaterial({ color: '#c4b8a8', roughness: 0.86 }), []);
-  const plinthMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#5a5a5a', roughness: 0.92, metalness: 0.05 }), []);
-  const plinthDark = useMemo(() => new THREE.MeshStandardMaterial({ color: '#4a4a4a', roughness: 0.94 }), []);
-  const concreteMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#7a7a7a', roughness: 0.85 }), []);
-  const doorMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#3a2a1a', roughness: 0.75, metalness: 0.05 }), []);
-  const doorFrameMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#2a2a2a', roughness: 0.7, metalness: 0.2 }), []);
-  const metalMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#4a4a4a', metalness: 0.6, roughness: 0.4 }), []);
-  const canopyMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#8a8a8a', roughness: 0.8 }), []);
-
-  // Collider calculations - door opening physically free, matches visual door at X=0
+  // Collider math derived from DIMS only, no magic 6.825
   const halfW = width / 2;
   const halfH = height / 2;
   const halfD = depth / 2;
+
+  // Front/back/left/right positions = edge - thickness/2
   const frontZ = halfD - wallThickness / 2;
   const backZ = -halfD + wallThickness / 2;
   const leftX = -halfW + wallThickness / 2;
   const rightX = halfW - wallThickness / 2;
 
+  // Front split for door opening
   const frontLeftWidth = halfW - doorWidth / 2;
   const frontLeftHalfW = frontLeftWidth / 2;
   const frontLeftCenterX = -halfW + frontLeftHalfW;
 
-  const frontRightWidth = frontLeftWidth;
   const frontRightHalfW = frontLeftHalfW;
   const frontRightCenterX = halfW - frontRightHalfW;
 
@@ -204,168 +69,352 @@ export function ShowcaseResidential({ def }: { def: BuildingDef }) {
   const topHalfH = topHeight / 2;
   const topCenterY = doorHeight + topHalfH;
 
+  // Interior floor - visual and physical must match within 1cm
+  // Entrance raised by 2 steps = 0.32m
+  const entranceRaise = stepHeight * 2; // 0.32
+  const visualFloorY = entranceRaise; // 0.32
+  const floorColliderHalfH = 0.12;
+  const floorColliderPosY = visualFloorY - floorColliderHalfH + 0.12; // top = posY + halfH = visualFloorY + 0.12? Let's compute exact
+  // We want physical top = visual floor surface
+  // physical top = posY + halfH
+  // Set posY = visualFloorY - halfH
+  const floorPhysPosY = visualFloorY - floorColliderHalfH;
+  const floorPhysTopY = floorPhysPosY + floorColliderHalfH; // should = visualFloorY
+
   const floorHalfW = halfW - wallThickness;
   const floorHalfD = halfD - wallThickness;
 
-  // Windows layout: 4 windows per floor across width 20m
-  // Spacing: width 20, windows 1.3 each, 4 windows = 5.2, gaps ~ (20-5.2)/5 = 2.96
+  // Windows layout
   const windowsPerFloor = 4;
   const windowSpacing = width / (windowsPerFloor + 1); // 4m
 
+  // Generate window data for instancing
+  const windowData = useMemo(() => {
+    const list: { x: number, y: number, z: number, rotY: number, floorIdx: number, winIdx: number, lightState: string, isGround: boolean }[] = [];
+    const rand = (seed: number) => {
+      const s = Math.sin(seed * 999.123) * 10000;
+      return s - Math.floor(s);
+    };
+    // Front facade
+    for (let f = 0; f < floors; f++) {
+      const y = plinthHeight + floorHeight / 2 + f * floorHeight;
+      if (y > height - 0.8) continue;
+      const isGround = f === 0;
+      for (let w = 0; w < windowsPerFloor; w++) {
+        const x = -halfW + windowSpacing * (w + 1);
+        if (isGround && Math.abs(x - doorX) < 1.8) continue; // skip door
+        const seed = f * 10 + w;
+        const r = rand(seed + 1);
+        let state = 'OFF';
+        if (r < 0.45) state = 'OFF';
+        else if (r < 0.72) state = 'DIM';
+        else if (r < 0.88) state = 'WARM';
+        else state = 'CURTAIN';
+        list.push({ x, y, z: halfD, rotY: 0, floorIdx: f, winIdx: w, lightState: state, isGround });
+      }
+    }
+    // Back facade
+    for (let f = 0; f < floors; f++) {
+      const y = plinthHeight + floorHeight / 2 + f * floorHeight;
+      if (y > height - 0.8) continue;
+      for (let w = 0; w < windowsPerFloor; w++) {
+        const x = -halfW + windowSpacing * (w + 1);
+        const seed = f * 10 + w + 100;
+        const r = rand(seed + 1);
+        let state = 'OFF';
+        if (r < 0.5) state = 'OFF';
+        else if (r < 0.75) state = 'DIM';
+        else if (r < 0.9) state = 'WARM';
+        else state = 'CURTAIN';
+        list.push({ x, y, z: -halfD, rotY: Math.PI, floorIdx: f, winIdx: w + 20, lightState: state, isGround: f === 0 });
+      }
+    }
+    // Side facades - 2 per floor
+    for (let f = 0; f < floors; f++) {
+      const y = plinthHeight + floorHeight / 2 + f * floorHeight;
+      if (y > height - 0.8) continue;
+      // Left side X = -halfW
+      for (let s = 0; s < 2; s++) {
+        const z = -halfD / 2 + s * halfD;
+        const seed = f * 10 + s + 200;
+        const r = rand(seed + 1);
+        let state = 'OFF';
+        if (r < 0.6) state = 'OFF';
+        else if (r < 0.8) state = 'DIM';
+        else if (r < 0.93) state = 'WARM';
+        else state = 'CURTAIN';
+        list.push({ x: -halfW, y, z, rotY: -Math.PI / 2, floorIdx: f, winIdx: s + 30, lightState: state, isGround: f === 0 });
+      }
+      // Right side X = halfW
+      for (let s = 0; s < 2; s++) {
+        const z = -halfD / 2 + s * halfD;
+        const seed = f * 10 + s + 300;
+        const r = rand(seed + 1);
+        let state = 'OFF';
+        if (r < 0.6) state = 'OFF';
+        else if (r < 0.8) state = 'DIM';
+        else if (r < 0.93) state = 'WARM';
+        else state = 'CURTAIN';
+        list.push({ x: halfW, y, z, rotY: Math.PI / 2, floorIdx: f, winIdx: s + 40, lightState: state, isGround: f === 0 });
+      }
+    }
+    return list;
+  }, []);
+
+  // Split by light state for instanced glass
+  const glassGroups = useMemo(() => {
+    const groups: Record<string, typeof windowData> = { OFF: [], DIM: [], WARM: [], CURTAIN: [] };
+    windowData.forEach(w => {
+      groups[w.lightState].push(w);
+    });
+    return groups;
+  }, [windowData]);
+
+  // Materials
+  const plasterMain = useMemo(() => new THREE.MeshStandardMaterial({ color: '#b8a898', roughness: 0.88 }), []);
+  const plasterDark = useMemo(() => new THREE.MeshStandardMaterial({ color: '#a89888', roughness: 0.90 }), []);
+  const plinthMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#5a5a5a', roughness: 0.92 }), []);
+  const plinthDark = useMemo(() => new THREE.MeshStandardMaterial({ color: '#4a4a4a', roughness: 0.94 }), []);
+  const concreteMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#7a7a7a', roughness: 0.85 }), []);
+  const doorMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#3a2a1a', roughness: 0.75 }), []);
+  const doorFrameMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#2a2a2a', roughness: 0.7, metalness: 0.2 }), []);
+  const metalMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#4a4a4a', metalness: 0.6, roughness: 0.4 }), []);
+  const canopyMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#8a8a8a', roughness: 0.8 }), []);
+  const frameMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e8e8e8', roughness: 0.6 }), []);
+  const sillMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#d8d8d8', roughness: 0.7 }), []);
+  const recessMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#1e1e1e', roughness: 0.9 }), []);
+
+  const glassOffMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#2a3a4a', roughness: 0.25, metalness: 0.1 }), []);
+  const glassDimMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#6a5a4a', emissive: '#332211', emissiveIntensity: 0.25, roughness: 0.5 }), []);
+  const glassWarmMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#ffcc88', emissive: '#ffaa44', emissiveIntensity: 0.85, roughness: 0.4 }), []);
+  const glassCurtainMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#3a3a4a', emissive: '#1a1a2a', emissiveIntensity: 0.08, roughness: 0.7 }), []);
+
+  // Geometries reusable
+  const frameGeom = useMemo(() => new THREE.BoxGeometry(DIMS.windowWidth + 0.12, DIMS.windowHeight + 0.12, 0.06), []);
+  const glassGeom = useMemo(() => new THREE.PlaneGeometry(DIMS.windowWidth - 0.02, DIMS.windowHeight - 0.02), []);
+  const sillGeom = useMemo(() => new THREE.BoxGeometry(DIMS.windowWidth + 0.2, 0.08, 0.14), []);
+  const recessGeom = useMemo(() => new THREE.BoxGeometry(DIMS.windowWidth + 0.08, DIMS.windowHeight + 0.08, DIMS.recessDepth), []);
+
+  // InstancedMesh refs
+  const frameInstRef = useRef<THREE.InstancedMesh>(null);
+  const sillInstRef = useRef<THREE.InstancedMesh>(null);
+  const recessInstRef = useRef<THREE.InstancedMesh>(null);
+  const glassOffRef = useRef<THREE.InstancedMesh>(null);
+  const glassDimRef = useRef<THREE.InstancedMesh>(null);
+  const glassWarmRef = useRef<THREE.InstancedMesh>(null);
+  const glassCurtainRef = useRef<THREE.InstancedMesh>(null);
+
+  // Set instanced matrices
+  useEffect(() => {
+    const dummy = new THREE.Object3D();
+    // Frames
+    if (frameInstRef.current) {
+      windowData.forEach((w, i) => {
+        dummy.position.set(w.x, w.y, w.z);
+        dummy.rotation.set(0, w.rotY, 0);
+        // Offset to avoid coplanar: frame slightly out
+        const offset = 0.02;
+        if (w.rotY === 0) dummy.position.z += offset;
+        else if (Math.abs(w.rotY - Math.PI) < 0.01) dummy.position.z -= offset;
+        else if (Math.abs(w.rotY + Math.PI/2) < 0.01) dummy.position.x -= offset;
+        else if (Math.abs(w.rotY - Math.PI/2) < 0.01) dummy.position.x += offset;
+        dummy.updateMatrix();
+        frameInstRef.current!.setMatrixAt(i, dummy.matrix);
+      });
+      frameInstRef.current.instanceMatrix.needsUpdate = true;
+    }
+    // Sills
+    if (sillInstRef.current) {
+      windowData.forEach((w, i) => {
+        dummy.position.set(w.x, w.y - DIMS.windowHeight/2 - 0.06, w.z);
+        dummy.rotation.set(0, w.rotY, 0);
+        const offset = 0.08;
+        if (w.rotY === 0) { dummy.position.z += offset; }
+        else if (Math.abs(w.rotY - Math.PI) < 0.01) { dummy.position.z -= offset; }
+        else if (Math.abs(w.rotY + Math.PI/2) < 0.01) { dummy.position.x += offset; dummy.position.z += 0; }
+        else if (Math.abs(w.rotY - Math.PI/2) < 0.01) { dummy.position.x -= offset; }
+        // For side windows, sill offset along X
+        if (Math.abs(w.rotY) > 0.1 && Math.abs(Math.abs(w.rotY) - Math.PI) > 0.1) {
+          // side
+          dummy.position.set(w.x, w.y - DIMS.windowHeight/2 - 0.06, w.z);
+          if (w.rotY === Math.PI/2) { dummy.position.x += offset; }
+          else { dummy.position.x -= offset; }
+          dummy.rotation.set(0, w.rotY, 0);
+        }
+        dummy.updateMatrix();
+        sillInstRef.current!.setMatrixAt(i, dummy.matrix);
+      });
+      sillInstRef.current.instanceMatrix.needsUpdate = true;
+    }
+    // Recess
+    if (recessInstRef.current) {
+      windowData.forEach((w, i) => {
+        dummy.position.set(w.x, w.y, w.z);
+        dummy.rotation.set(0, w.rotY, 0);
+        const recessOffset = -DIMS.recessDepth/2 + 0.02;
+        if (w.rotY === 0) dummy.position.z += recessOffset;
+        else if (Math.abs(w.rotY - Math.PI) < 0.01) dummy.position.z -= recessOffset;
+        else if (Math.abs(w.rotY + Math.PI/2) < 0.01) dummy.position.x -= recessOffset;
+        else if (Math.abs(w.rotY - Math.PI/2) < 0.01) dummy.position.x += recessOffset;
+        dummy.updateMatrix();
+        recessInstRef.current!.setMatrixAt(i, dummy.matrix);
+      });
+      recessInstRef.current.instanceMatrix.needsUpdate = true;
+    }
+    // Glass groups
+    const setGlassMatrices = (ref: React.RefObject<THREE.InstancedMesh>, data: typeof windowData) => {
+      if (!ref.current) return;
+      data.forEach((w, i) => {
+        dummy.position.set(w.x, w.y, w.z);
+        dummy.rotation.set(0, w.rotY, 0);
+        const offset = 0.05;
+        if (w.rotY === 0) dummy.position.z += offset;
+        else if (Math.abs(w.rotY - Math.PI) < 0.01) dummy.position.z -= offset;
+        else if (Math.abs(w.rotY + Math.PI/2) < 0.01) dummy.position.x -= offset;
+        else if (Math.abs(w.rotY - Math.PI/2) < 0.01) dummy.position.x += offset;
+        dummy.updateMatrix();
+        ref.current!.setMatrixAt(i, dummy.matrix);
+      });
+      ref.current.instanceMatrix.needsUpdate = true;
+    };
+    setGlassMatrices(glassOffRef, glassGroups.OFF);
+    setGlassMatrices(glassDimRef, glassGroups.DIM);
+    setGlassMatrices(glassWarmRef, glassGroups.WARM);
+    setGlassMatrices(glassCurtainRef, glassGroups.CURTAIN);
+  }, [windowData, glassGroups]);
+
+  // Night emissive update for glass materials
+  useFrame(() => {
+    try {
+      const tod = (window as any).__timeOfDay || 'day';
+      const isNight = tod === 'night' || tod === 'evening' || tod === 'dawn';
+      if (!isNight) {
+        glassOffMat.color.set('#2a3a4a'); glassOffMat.emissive.set('#000000'); glassOffMat.emissiveIntensity = 0;
+        glassDimMat.color.set('#2a3a4a'); glassDimMat.emissive.set('#000000'); glassDimMat.emissiveIntensity = 0;
+        glassWarmMat.color.set('#2a3a4a'); glassWarmMat.emissive.set('#000000'); glassWarmMat.emissiveIntensity = 0;
+        glassCurtainMat.color.set('#2a3a4a'); glassCurtainMat.emissive.set('#000000'); glassCurtainMat.emissiveIntensity = 0;
+      } else {
+        glassOffMat.color.set('#1a2a3a'); glassOffMat.emissive.set('#000000'); glassOffMat.emissiveIntensity = 0.03;
+        glassDimMat.color.set('#6a5a4a'); glassDimMat.emissive.set('#332211'); glassDimMat.emissiveIntensity = 0.25;
+        glassWarmMat.color.set('#ffcc88'); glassWarmMat.emissive.set('#ffaa44'); glassWarmMat.emissiveIntensity = 0.85;
+        glassCurtainMat.color.set('#3a3a4a'); glassCurtainMat.emissive.set('#1a1a2a'); glassCurtainMat.emissiveIntensity = 0.08;
+      }
+    } catch {}
+  });
+
   return (
     <RigidBody type="fixed" colliders={false} position={position} rotation={[0, rotation, 0]}>
-      {/* Compound colliders - door opening free, matches visual door at X=0 */}
+      {/* Exterior colliders - full height 18m, derived from DIMS */}
       <CuboidCollider args={[frontLeftHalfW, halfH, wallThickness / 2]} position={[frontLeftCenterX, halfH, frontZ]} />
       <CuboidCollider args={[frontRightHalfW, halfH, wallThickness / 2]} position={[frontRightCenterX, halfH, frontZ]} />
       <CuboidCollider args={[doorWidth / 2, topHalfH, wallThickness / 2]} position={[doorX, topCenterY, frontZ]} />
       <CuboidCollider args={[halfW, halfH, wallThickness / 2]} position={[0, halfH, backZ]} />
       <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[leftX, halfH, 0]} />
       <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[rightX, halfH, 0]} />
-      {/* Interior floor - walkable inside */}
-      <CuboidCollider args={[floorHalfW, 0.1, floorHalfD]} position={[0, 0.15, 0]} />
+      {/* Interior floor - top matches visual floor Y=0.32 within 1cm */}
+      <CuboidCollider args={[floorHalfW, floorColliderHalfH, floorHalfD]} position={[0, floorPhysPosY, 0]} />
       {/* Interior vestibule walls */}
-      <CuboidCollider args={[0.15, 1.4, 1.5]} position={[-1.5, 1.4, halfD - 1.5]} />
-      <CuboidCollider args={[0.15, 1.4, 1.5]} position={[1.5, 1.4, halfD - 1.5]} />
-      <CuboidCollider args={[1.5, 1.4, 0.15]} position={[0, 1.4, halfD - 3]} />
+      <CuboidCollider args={[0.15, 1.4, 1.5]} position={[-1.5, 1.4 + entranceRaise, halfD - 1.5]} />
+      <CuboidCollider args={[0.15, 1.4, 1.5]} position={[1.5, 1.4 + entranceRaise, halfD - 1.5]} />
+      <CuboidCollider args={[1.5, 1.4, 0.15]} position={[0, 1.4 + entranceRaise, halfD - 3]} />
+      {/* Steps colliders - physically correct 0.16m each */}
+      <CuboidCollider args={[0.9, stepHeight/2, 0.45]} position={[doorX, stepHeight/2, doorZ + 0.5]} />
+      <CuboidCollider args={[0.8, stepHeight/2, 0.3]} position={[doorX, stepHeight + stepHeight/2, doorZ + 0.35]} />
 
       <group>
-        {/* Foundation / Plinth - 0.6m darker */}
+        {/* Plinth 0.6m */}
         <mesh receiveShadow position={[0, plinthHeight/2, 0]}>
           <boxGeometry args={[width + 0.2, plinthHeight, depth + 0.2]} />
           <primitive object={plinthMat} attach="material" />
         </mesh>
-        {/* Plinth darker bottom edge */}
         <mesh receiveShadow position={[0, 0.15, 0]}>
           <boxGeometry args={[width + 0.25, 0.3, depth + 0.25]} />
           <primitive object={plinthDark} attach="material" />
         </mesh>
 
-        {/* Main building volume - split into plaster shades for controlled wear */}
+        {/* Main volume */}
         <mesh castShadow receiveShadow position={[0, plinthHeight + (height - plinthHeight)/2, 0]}>
           <boxGeometry args={[width, height - plinthHeight, depth]} />
           <primitive object={plasterMain} attach="material" />
         </mesh>
 
-        {/* Floor divisions - architectural separation */}
+        {/* Floor divisions */}
         {Array.from({ length: floors }).map((_, i) => {
           const y = plinthHeight + i * floorHeight;
-          if (y > height - 0.2) return null;
+          if (y > height - 0.15) return null;
           return (
-            <mesh key={`floor-div-${i}`} castShadow receiveShadow position={[0, y, depth/2 + 0.03]}>
+            <mesh key={`floor-div-${i}`} castShadow receiveShadow position={[0, y, halfD + 0.03]}>
               <boxGeometry args={[width + 0.08, 0.12, 0.08]} />
               <meshStandardMaterial color={i === 0 ? '#6a6a6a' : '#9a8a7a'} roughness={0.85} />
             </mesh>
           );
         })}
 
-        {/* Vertical corner pilasters - neat corners */}
-        <mesh castShadow position={[-width/2 - 0.02, height/2, 0]}><boxGeometry args={[0.18, height, depth + 0.08]} /><primitive object={concreteMat} attach="material" /></mesh>
-        <mesh castShadow position={[width/2 + 0.02, height/2, 0]}><boxGeometry args={[0.18, height, depth + 0.08]} /><primitive object={concreteMat} attach="material" /></mesh>
+        {/* Corner pilasters */}
+        <mesh castShadow position={[-halfW - 0.02, halfH, 0]}><boxGeometry args={[0.18, height, depth + 0.08]} /><primitive object={concreteMat} attach="material" /></mesh>
+        <mesh castShadow position={[halfW + 0.02, halfH, 0]}><boxGeometry args={[0.18, height, depth + 0.08]} /><primitive object={concreteMat} attach="material" /></mesh>
 
-        {/* Facade wear patches - darker lower part, faded plaster */}
-        <mesh position={[0, 1.8, depth/2 + 0.04]}><boxGeometry args={[width*0.9, 1.2, 0.02]} /><meshStandardMaterial color="#8a7a6a" transparent opacity={0.22} roughness={0.95} /></mesh>
-        <mesh position={[-4, 4.5, depth/2 + 0.04]}><boxGeometry args={[3, 2, 0.02]} /><meshStandardMaterial color="#a89888" transparent opacity={0.25} roughness={0.9} /></mesh>
-        <mesh position={[5, 7, depth/2 + 0.04]}><boxGeometry args={[2.5, 1.8, 0.02]} /><meshStandardMaterial color="#c4b8a8" transparent opacity={0.18} roughness={0.9} /></mesh>
-        <mesh position={[0, 12, depth/2 + 0.04]}><boxGeometry args={[width*0.7, 1.5, 0.02]} /><meshStandardMaterial color="#9a8a7a" transparent opacity={0.12} roughness={0.92} /></mesh>
+        {/* Wear patches - non-repeating moderate */}
+        <mesh position={[0, 1.8, halfD + 0.04]}><boxGeometry args={[width*0.9, 1.2, 0.02]} /><meshStandardMaterial color="#8a7a6a" transparent opacity={0.22} roughness={0.95} /></mesh>
+        <mesh position={[-4.2, 4.5, halfD + 0.04]}><boxGeometry args={[3.2, 2.1, 0.02]} /><meshStandardMaterial color="#a89888" transparent opacity={0.18} roughness={0.9} /></mesh>
+        <mesh position={[5.3, 7.2, halfD + 0.04]}><boxGeometry args={[2.8, 1.6, 0.02]} /><meshStandardMaterial color="#c4b8a8" transparent opacity={0.14} roughness={0.9} /></mesh>
+        <mesh position={[-2, 11.5, halfD + 0.04]}><boxGeometry args={[4, 1.2, 0.02]} /><meshStandardMaterial color="#9a8a7a" transparent opacity={0.10} roughness={0.92} /></mesh>
+        <mesh position={[3, 14, halfD + 0.04]}><boxGeometry args={[2, 1.8, 0.02]} /><meshStandardMaterial color="#b8a898" transparent opacity={0.09} roughness={0.9} /></mesh>
 
-        {/* Cornice / Parapet roof */}
+        {/* Cornice */}
         <mesh castShadow position={[0, height + 0.15, 0]}><boxGeometry args={[width + 0.4, 0.3, depth + 0.4]} /><meshStandardMaterial color="#2a2a2a" roughness={0.9} /></mesh>
         <mesh castShadow position={[0, height + 0.5, 0]}><boxGeometry args={[width + 0.15, 0.45, depth + 0.15]} /><primitive object={plasterDark} attach="material" /></mesh>
 
-        {/* Drain pipe - vertical */}
-        <mesh castShadow position={[width/2 - 0.8, height/2, depth/2 + 0.12]}><cylinderGeometry args={[0.05, 0.05, height, 8]} /><primitive object={metalMat} attach="material" /></mesh>
-        <mesh castShadow position={[-width/2 + 0.8, height/2, depth/2 + 0.12]}><cylinderGeometry args={[0.05, 0.05, height, 8]} /><primitive object={metalMat} attach="material" /></mesh>
+        {/* Drain pipes */}
+        <mesh castShadow position={[halfW - 0.8, halfH, halfD + 0.12]}><cylinderGeometry args={[0.05, 0.05, height, 8]} /><primitive object={metalMat} attach="material" /></mesh>
+        <mesh castShadow position={[-halfW + 0.8, halfH, halfD + 0.12]}><cylinderGeometry args={[0.05, 0.05, height, 8]} /><primitive object={metalMat} attach="material" /></mesh>
 
-        {/* Windows - front facade */}
-        {Array.from({ length: floors }).map((_, floorIdx) => {
-          const isGround = floorIdx === 0;
-          const y = plinthHeight + floorHeight/2 + floorIdx * floorHeight;
-          if (y > height - 1) return null;
-          return Array.from({ length: windowsPerFloor }).map((_, winIdx) => {
-            // Skip door position on ground floor center
-            if (isGround && winIdx === Math.floor(windowsPerFloor/2)) {
-              // Door is at center, skip window at door position, but keep side windows
-              // For 4 windows, indices 0,1,2,3 center between 1 and 2 is door, so skip none? Actually door at 0, windows at -7.5,-2.5,2.5,7.5? Let's place windows avoiding door
-              // Door at 0 width 1.1, windows at spacing 4m: -6,-2,2,6 -> windows at -2 and 2 are close to door (2m away) okay, but we should skip if too close
-              const wx = -width/2 + windowSpacing * (winIdx + 1);
-              if (Math.abs(wx - doorX) < 1.8) return null; // avoid door
-            }
-            const wx = -width/2 + windowSpacing * (winIdx + 1);
-            return <WindowSet key={`win-f${floorIdx}-w${winIdx}`} x={wx} y={y} z={depth/2} isGroundFloor={isGround} floorIndex={floorIdx} windowIndex={winIdx} />;
-          });
-        })}
+        {/* Instanced windows - optimized */}
+        <instancedMesh ref={recessInstRef as any} args={[recessGeom, recessMat, windowData.length]} castShadow receiveShadow />
+        <instancedMesh ref={frameInstRef as any} args={[frameGeom, frameMat, windowData.length]} castShadow />
+        <instancedMesh ref={sillInstRef as any} args={[sillGeom, sillMat, windowData.length]} castShadow receiveShadow />
+        {glassGroups.OFF.length > 0 && <instancedMesh ref={glassOffRef as any} args={[glassGeom, glassOffMat, glassGroups.OFF.length]} />}
+        {glassGroups.DIM.length > 0 && <instancedMesh ref={glassDimRef as any} args={[glassGeom, glassDimMat, glassGroups.DIM.length]} />}
+        {glassGroups.WARM.length > 0 && <instancedMesh ref={glassWarmRef as any} args={[glassGeom, glassWarmMat, glassGroups.WARM.length]} />}
+        {glassGroups.CURTAIN.length > 0 && <instancedMesh ref={glassCurtainRef as any} args={[glassGeom, glassCurtainMat, glassGroups.CURTAIN.length]} />}
 
-        {/* Side facade windows - fewer */}
-        {Array.from({ length: floors }).map((_, floorIdx) => {
-          const y = plinthHeight + floorHeight/2 + floorIdx * floorHeight;
-          if (y > height - 1) return null;
-          return [ -1, 1 ].map((side, sIdx) => (
-            <WindowSet key={`side-win-${floorIdx}-${sIdx}`} x={side * (width/2)} y={y} z={0} floorIndex={floorIdx} windowIndex={sIdx+10} />
-          ));
-        })}
-
-        {/* Back facade windows */}
-        {Array.from({ length: floors }).map((_, floorIdx) => {
-          const y = plinthHeight + floorHeight/2 + floorIdx * floorHeight;
-          if (y > height - 1) return null;
-          return Array.from({ length: windowsPerFloor }).map((_, winIdx) => {
-            const wx = -width/2 + windowSpacing * (winIdx + 1);
-            return <WindowSet key={`back-win-${floorIdx}-${winIdx}`} x={wx} y={y} z={-depth/2} floorIndex={floorIdx} windowIndex={winIdx+20} />;
-          });
-        })}
-
-        {/* Entrance - door, frame, canopy, steps */}
+        {/* Entrance */}
         <group position={[doorX, 0, doorZ]}>
-          {/* Steps - 2 steps 0.16m each */}
-          <mesh receiveShadow position={[0, 0.08, 0.5]}><boxGeometry args={[1.8, 0.16, 0.9]} /><meshStandardMaterial color="#6a6a6a" roughness={0.9} /></mesh>
-          <mesh receiveShadow position={[0, 0.24, 0.35]}><boxGeometry args={[1.6, 0.16, 0.6]} /><meshStandardMaterial color="#5a5a5a" roughness={0.9} /></mesh>
-          {/* Door frame */}
-          <mesh castShadow position={[0, doorHeight/2 + 0.32, 0.06]}><boxGeometry args={[doorWidth + 0.18, doorHeight + 0.12, 0.12]} /><primitive object={doorFrameMat} attach="material" /></mesh>
-          {/* Door */}
-          <mesh castShadow position={[0, doorHeight/2 + 0.32, 0.13]}><boxGeometry args={[doorWidth, doorHeight, 0.06]} /><primitive object={doorMat} attach="material" /></mesh>
-          {/* Door handle */}
-          <mesh castShadow position={[0.32, doorHeight/2 + 0.2, 0.17]}><sphereGeometry args={[0.04, 8, 8]} /><meshStandardMaterial color="#b8a030" metalness={0.7} roughness={0.3} /></mesh>
-          {/* Canopy above entrance */}
-          <group position={[0, 2.65, 0.5]}>
+          <mesh receiveShadow position={[0, stepHeight/2, 0.5]}><boxGeometry args={[1.8, stepHeight, 0.9]} /><meshStandardMaterial color="#6a6a6a" roughness={0.9} /></mesh>
+          <mesh receiveShadow position={[0, stepHeight + stepHeight/2, 0.35]}><boxGeometry args={[1.6, stepHeight, 0.6]} /><meshStandardMaterial color="#5a5a5a" roughness={0.9} /></mesh>
+          <mesh castShadow position={[0, doorHeight/2 + entranceRaise, 0.06]}><boxGeometry args={[doorWidth + 0.18, doorHeight + 0.12, 0.12]} /><primitive object={doorFrameMat} attach="material" /></mesh>
+          <mesh castShadow position={[0, doorHeight/2 + entranceRaise, 0.13]}><boxGeometry args={[doorWidth, doorHeight, 0.06]} /><primitive object={doorMat} attach="material" /></mesh>
+          <mesh castShadow position={[0.32, doorHeight/2 + entranceRaise - 0.15, 0.17]}><sphereGeometry args={[0.04, 8, 8]} /><meshStandardMaterial color="#b8a030" metalness={0.7} roughness={0.3} /></mesh>
+          <group position={[0, 2.65 + entranceRaise, 0.5]}>
             <mesh castShadow><boxGeometry args={[1.8, 0.08, 1.1]} /><primitive object={canopyMat} attach="material" /></mesh>
             <mesh castShadow position={[-0.7, -0.4, 0.3]}><cylinderGeometry args={[0.03, 0.03, 0.8, 6]} /><primitive object={metalMat} attach="material" /></mesh>
             <mesh castShadow position={[0.7, -0.4, 0.3]}><cylinderGeometry args={[0.03, 0.03, 0.8, 6]} /><primitive object={metalMat} attach="material" /></mesh>
           </group>
-          {/* House number */}
-          <group position={[-0.9, 1.8, 0.12]}>
+          <group position={[-0.9, 1.8 + entranceRaise, 0.12]}>
             <mesh><boxGeometry args={[0.35, 0.25, 0.02]} /><meshStandardMaterial color="#2a5a8a" /></mesh>
             <mesh position={[0, 0, 0.02]}><planeGeometry args={[0.25, 0.18]} /><meshStandardMaterial color="white" /></mesh>
           </group>
-          {/* Intercom panel */}
-          <mesh castShadow position={[0.85, 1.2, 0.12]}><boxGeometry args={[0.18, 0.28, 0.04]} /><primitive object={metalMat} attach="material" /></mesh>
-          {/* Outdoor light */}
-          <group position={[0, 2.2, 0.18]}>
+          <mesh castShadow position={[0.85, 1.2 + entranceRaise, 0.12]}><boxGeometry args={[0.18, 0.28, 0.04]} /><primitive object={metalMat} attach="material" /></mesh>
+          <group position={[0, 2.2 + entranceRaise, 0.18]}>
             <mesh castShadow><cylinderGeometry args={[0.08, 0.08, 0.06, 8]} /><primitive object={metalMat} attach="material" /></mesh>
             <mesh position={[0, -0.08, 0]}><sphereGeometry args={[0.1, 8, 8]} /><meshStandardMaterial color="#ffcc88" emissive="#ffaa44" emissiveIntensity={0.6} /></mesh>
           </group>
-          {/* Dirt at threshold */}
           <mesh position={[0, 0.02, 0.6]} rotation={[-Math.PI/2, 0, 0]}><planeGeometry args={[1.2, 0.5]} /><meshStandardMaterial color="#3a3a3a" transparent opacity={0.22} roughness={0.95} /></mesh>
         </group>
 
-        {/* Trash urn near entrance */}
-        <group position={[2.5, 0.02, depth/2 + 0.8]}>
+        <group position={[2.5, 0.02, halfD + 0.8]}>
           <mesh castShadow position={[0, 0.45, 0]}><cylinderGeometry args={[0.28, 0.28, 0.9, 12]} /><meshStandardMaterial color="#3a3a3a" roughness={0.85} /></mesh>
           <mesh castShadow position={[0, 0.92, 0]}><cylinderGeometry args={[0.30, 0.30, 0.06, 12]} /><meshStandardMaterial color="#2a2a2a" /></mesh>
         </group>
 
-        {/* Interior - small vestibule first floor */}
-        <group position={[0, 0.32, depth/2 - 1.5]}>
-          {/* Interior floor */}
-          <mesh receiveShadow position={[0, 0, 0]} rotation={[-Math.PI/2, 0, 0]}><planeGeometry args={[3, 3]} /><meshStandardMaterial color="#8a8a8a" roughness={0.85} /></mesh>
-          {/* Interior walls */}
+        {/* Interior vestibule */}
+        <group position={[0, entranceRaise, halfD - 1.5]}>
+          <mesh receiveShadow position={[0, 0.01, 0]} rotation={[-Math.PI/2, 0, 0]}><planeGeometry args={[3, 3]} /><meshStandardMaterial color="#8a8a8a" roughness={0.85} /></mesh>
           <mesh castShadow position={[-1.5, 1.4, 0]}><boxGeometry args={[0.12, 2.8, 3]} /><meshStandardMaterial color="#c4b8a8" roughness={0.9} /></mesh>
           <mesh castShadow position={[1.5, 1.4, 0]}><boxGeometry args={[0.12, 2.8, 3]} /><meshStandardMaterial color="#c4b8a8" roughness={0.9} /></mesh>
           <mesh castShadow position={[0, 1.4, -1.5]}><boxGeometry args={[3, 2.8, 0.12]} /><meshStandardMaterial color="#b8a898" roughness={0.9} /></mesh>
-          {/* Ceiling */}
           <mesh receiveShadow position={[0, 2.8, 0]} rotation={[Math.PI/2, 0, 0]}><planeGeometry args={[3, 3]} /><meshStandardMaterial color="#e8e8e8" roughness={0.85} /></mesh>
-          {/* Ceiling light emissive */}
           <mesh position={[0, 2.7, 0]}><boxGeometry args={[0.4, 0.05, 0.4]} /><meshStandardMaterial color="#ffffcc" emissive="#ffcc88" emissiveIntensity={0.7} /></mesh>
-          {/* Inner side of entrance door frame */}
           <mesh position={[0, 1.2, 1.5]}><boxGeometry args={[1.2, 2.15, 0.08]} /><meshStandardMaterial color="#3a2a1a" roughness={0.8} /></mesh>
         </group>
       </group>
