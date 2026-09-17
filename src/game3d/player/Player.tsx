@@ -38,6 +38,8 @@ export function Player() {
   
   const velocityRef = useRef(new THREE.Vector3());
   const playerYawRef = useRef(playerRotation);
+  const targetPlayerYawRef = useRef(playerRotation);
+  const visualRef = useRef<THREE.Group>(null);
   const lastPosRef = useRef<[number, number, number]>(SAFE_SPAWN);
   const frameCountRef = useRef(0);
   const mountedRef = useRef(false);
@@ -47,6 +49,7 @@ export function Player() {
   
   const WALK_SPEED = 3.5;
   const RUN_SPEED = 6.0;
+  const MODEL_FORWARD_OFFSET = 0; // model faces +Z, no offset needed
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -270,11 +273,25 @@ export function Player() {
         }
       }
 
+      // PLAYER VISUAL ROTATION - per task 9-12
+      // Only update target yaw when moving, keep last direction when stopped
       if (isMovingInput) {
-        let diff = targetYaw - playerYawRef.current;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        playerYawRef.current += diff * Math.min(1, delta * 10);
+        targetPlayerYawRef.current = targetYaw;
+      }
+
+      // Shortest-angle interpolation for smooth rotation 0.1-0.2 sec
+      // delta = atan2(sin(target-current), cos(target-current))
+      const currentYaw = playerYawRef.current;
+      const targetYawSmooth = targetPlayerYawRef.current;
+      const sinDelta = Math.sin(targetYawSmooth - currentYaw);
+      const cosDelta = Math.cos(targetYawSmooth - currentYaw);
+      const deltaYaw = Math.atan2(sinDelta, cosDelta);
+      // Smoothing factor ~10 => ~0.1-0.2 sec
+      playerYawRef.current += deltaYaw * Math.min(1, delta * 10);
+
+      // Apply to visual group - physical body stays stable, visual rotates
+      if (visualRef.current) {
+        visualRef.current.rotation.y = playerYawRef.current + MODEL_FORWARD_OFFSET;
       }
 
       let currentVel;
@@ -320,7 +337,7 @@ export function Player() {
       const radius = 0.35;
       const colliderBottomY = colliderCenterY - halfHeight - radius;
       const groundTopY = 0;
-      const visualFeetY = colliderBottomY + MODEL_Y_OFFSET; // approx feet world Y
+      const visualFeetY = colliderBottomY + MODEL_Y_OFFSET;
 
       (window as any).__playerInput = {
         W: input.forward,
@@ -332,6 +349,10 @@ export function Player() {
         JoyY: mobileInput.joyY,
         pos: lastPosRef.current,
         vel: [finalVelX, finalVelY, finalVelZ],
+        moveVec: `${targetVelX.toFixed(2)},${targetVelZ.toFixed(2)}`,
+        targetPlayerYaw: targetPlayerYawRef.current.toFixed(3),
+        currentVisualYaw: playerYawRef.current.toFixed(3),
+        modelForwardOffset: MODEL_FORWARD_OFFSET.toFixed(3),
         grounded: true,
         bodyCenterY: bodyCenterY.toFixed(2),
         colliderBottomY: colliderBottomY.toFixed(2),
@@ -380,7 +401,7 @@ export function Player() {
         canSleep={false}
       >
         <CapsuleCollider args={[0.65, 0.35]} position={[0, 1.0, 0]} />
-        <group position={[0, MODEL_Y_OFFSET, 0]}>
+        <group ref={visualRef as any} position={[0, MODEL_Y_OFFSET, 0]}>
           {USE_DEBUG_CUBE ? (
             <group position={[0, 1, 0]}>
               <mesh castShadow receiveShadow>

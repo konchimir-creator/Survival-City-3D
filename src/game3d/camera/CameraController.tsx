@@ -5,8 +5,7 @@ import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
 import { playerTransformRef } from '@/game3d/player/playerTransformRef';
 
-// SAFE_SPAWN for validation
-const SAFE_SPAWN: [number, number, number] = [15, 2, 15];
+const SAFE_SPAWN: [number, number, number] = [15, 3, 15];
 const DEFAULT_YAW = 0;
 const DEFAULT_PITCH = 0.25;
 const DEFAULT_DISTANCE = 4.5;
@@ -15,10 +14,11 @@ const MAX_DISTANCE = 7;
 const MIN_PITCH = -0.15;
 const MAX_PITCH = 0.65;
 const FOV = 62;
+const MOUSE_SENSITIVITY = 0.0025;
 
 export function CameraController() {
   const { camera, gl } = useThree();
-  const playerPosition = useGameStore((s) => s.player.position); // fallback if ref not ready
+  const playerPosition = useGameStore((s) => s.player.position);
   const isInShopInterior = useGameStore((s) => s.isInShopInterior);
   
   const cameraTargetRef = useRef(new THREE.Vector3());
@@ -30,12 +30,15 @@ export function CameraController() {
   const currentDistanceRef = useRef(DEFAULT_DISTANCE);
   const initializedRef = useRef(false);
   
-  // CAMERA COLLISION DISABLED FOR THIS FIX - per task 12
-  // const collisionEnabledRef = useRef(false);
+  const mouseDeltaRef = useRef({ x: 0, y: 0, lastX: 0, lastY: 0 });
+  const isDraggingRef = useRef(false);
+  const prevYawRef = useRef(DEFAULT_YAW);
 
   useEffect(() => {
-    console.log('[Camera] Initialized - collision DISABLED for player fix, reading from playerTransformRef');
+    console.log('[Camera] Initialized - collision OFF, yaw/pitch single source yawRef/pitchRef');
     (window as any).__cameraCollisionEnabled = false;
+    (window as any).__cameraYaw = DEFAULT_YAW;
+    (window as any).__cameraPitch = DEFAULT_PITCH;
   }, []);
 
   useEffect(() => {
@@ -43,7 +46,6 @@ export function CameraController() {
       if (isInShopInterior) return;
       const store = useGameStore.getState();
       if (store.isInventoryOpen || store.isMenuOpen || store.isDialogOpen || store.isCharacterOpen || store.isMapOpen) return;
-      
       desiredDistanceRef.current = THREE.MathUtils.clamp(
         desiredDistanceRef.current + e.deltaY * 0.008,
         MIN_DISTANCE,
@@ -52,32 +54,80 @@ export function CameraController() {
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!document.pointerLockElement) return;
+      const isPointerLocked = !!document.pointerLockElement;
+      const isDragging = isDraggingRef.current;
+
+      // If not pointer locked and not dragging, ignore (unless we want fallback)
+      if (!isPointerLocked && !isDragging) return;
       if (isInShopInterior) return;
-      const sensitivity = 0.0025;
+
+      const store = useGameStore.getState();
+      if (store.isInventoryOpen || store.isMenuOpen || store.isDialogOpen || store.isCharacterOpen || store.isMapOpen) return;
+
+      const mx = e.movementX || 0;
+      const my = e.movementY || 0;
+
+      mouseDeltaRef.current.x = mx;
+      mouseDeltaRef.current.y = my;
+
+      // Horizontal mouse -> YAW, Vertical -> PITCH (per task 2)
+      // Yaw unrestricted 360°, pitch clamped
+      const prevYaw = yawRef.current;
+      prevYawRef.current = prevYaw;
+
+      // Standard third-person: mouse right -> yaw decreases? Let's use typical: mouse right -> camera orbits right, yaw -= dx * sens
+      // At yaw0 camera behind, mouse right should orbit camera to right side (yaw negative? need consistent)
+      // Use: yaw -= mx * sensitivity, pitch -= my * sensitivity
+      yawRef.current -= mx * MOUSE_SENSITIVITY;
       const newPitch = THREE.MathUtils.clamp(
-        pitchRef.current - e.movementY * sensitivity,
+        pitchRef.current - my * MOUSE_SENSITIVITY,
         MIN_PITCH,
         MAX_PITCH
       );
-      if (Number.isFinite(newPitch)) {
-        pitchRef.current = newPitch;
-        (window as any).__cameraPitch = newPitch;
+      pitchRef.current = newPitch;
+
+      // Mirror to globals for debug/F3, not source of truth
+      (window as any).__cameraYaw = yawRef.current;
+      (window as any).__cameraPitch = pitchRef.current;
+      (window as any).__cameraMouseDelta = { x: mx, y: my, yawPrev: prevYaw, yawCurr: yawRef.current, pitch: newPitch, pointerLock: isPointerLocked ? 'YES' : 'NO' };
+
+      // For F3 immediate feedback
+      if (Math.abs(mx) > 0.1 || Math.abs(my) > 0.1) {
+        // console.log(`[Camera] Mouse mx=${mx} my=${my} yaw ${prevYaw.toFixed(3)}->${yawRef.current.toFixed(3)} pitch ${newPitch.toFixed(3)}`);
+      }
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 0 || e.button === 2) {
+        isDraggingRef.current = true;
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (e.button === 0 || e.button === 2) {
+        isDraggingRef.current = false;
       }
     };
 
     const handleMobileCamera = (e: any) => {
-      const { dy } = e.detail || {};
+      const { dx, dy } = e.detail || {};
+      // Mobile: horizontal delta -> yaw, vertical -> pitch, same refs
+      if (dx !== undefined) {
+        const prevYaw = yawRef.current;
+        prevYawRef.current = prevYaw;
+        yawRef.current -= dx * 0.005;
+        (window as any).__cameraYaw = yawRef.current;
+        mouseDeltaRef.current.x = dx;
+      }
       if (dy !== undefined) {
         const newPitch = THREE.MathUtils.clamp(
           pitchRef.current - dy * 0.005,
           MIN_PITCH,
           MAX_PITCH
         );
-        if (Number.isFinite(newPitch)) {
-          pitchRef.current = newPitch;
-          (window as any).__cameraPitch = newPitch;
-        }
+        pitchRef.current = newPitch;
+        (window as any).__cameraPitch = newPitch;
+        mouseDeltaRef.current.y = dy;
       }
     };
 
@@ -85,7 +135,6 @@ export function CameraController() {
       if (e.code === 'KeyR' || e.code === 'Home') {
         const target = e.target as HTMLElement;
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
-        
         console.log('[Camera] Reset requested');
         yawRef.current = DEFAULT_YAW;
         pitchRef.current = DEFAULT_PITCH;
@@ -95,19 +144,22 @@ export function CameraController() {
         (window as any).__cameraYaw = DEFAULT_YAW;
         (window as any).__cameraPitch = DEFAULT_PITCH;
         (window as any).__cameraDistance = DEFAULT_DISTANCE;
-        // Hard reset position next frame
         initializedRef.current = false;
       }
     };
 
     window.addEventListener('wheel', handleWheel, { passive: true });
     window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('mobileCamera' as any, handleMobileCamera as any);
     window.addEventListener('keydown', handleResetCamera);
 
     return () => {
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('mobileCamera' as any, handleMobileCamera as any);
       window.removeEventListener('keydown', handleResetCamera);
     };
@@ -118,10 +170,7 @@ export function CameraController() {
       if (isInShopInterior) return;
       const store = useGameStore.getState();
       if (store.isInventoryOpen || store.isMenuOpen || store.isDialogOpen || store.isCharacterOpen || store.isMapOpen) return;
-      // Focus canvas, pointer lock only if supported, NOT required for movement
-      try {
-        gl.domElement.focus();
-      } catch {}
+      try { gl.domElement.focus(); } catch {}
       if (!document.pointerLockElement) {
         try {
           const p = gl.domElement.requestPointerLock() as any;
@@ -141,10 +190,8 @@ export function CameraController() {
         return;
       }
 
-      // SOURCE OF TRUTH: real RigidBody translation via shared ref, not Zustand
       let pPos: [number, number, number];
       let isFromRef = false;
-      
       if (playerTransformRef.current.mounted && playerTransformRef.current.position) {
         const pos = playerTransformRef.current.position;
         if (Number.isFinite(pos.x) && Number.isFinite(pos.y) && Number.isFinite(pos.z)) {
@@ -157,77 +204,45 @@ export function CameraController() {
         pPos = playerPosition as any;
       }
 
-      // Validate player position
-      if (!pPos || pPos.length !== 3 || !pPos.every((v) => Number.isFinite(v))) {
-        pPos = SAFE_SPAWN;
-      }
-      
-      if (Math.abs(pPos[0]) > 200 || Math.abs(pPos[2]) > 200 || pPos[1] < -10 || pPos[1] > 50) {
-        pPos = SAFE_SPAWN;
-      }
+      if (!pPos || pPos.length !== 3 || !pPos.every((v) => Number.isFinite(v))) pPos = SAFE_SPAWN;
+      if (Math.abs(pPos[0]) > 200 || Math.abs(pPos[2]) > 200 || pPos[1] < -10 || pPos[1] > 50) pPos = SAFE_SPAWN;
 
-      // Get yaw from global
-      let yaw = (window as any).__cameraYaw;
-      if (!Number.isFinite(yaw)) yaw = DEFAULT_YAW;
-      yawRef.current = yaw;
+      // SINGLE SOURCE OF TRUTH: yawRef/pitchRef, not global
+      const yaw = yawRef.current;
+      const pitch = pitchRef.current;
 
-      // Validate pitch
-      if (!Number.isFinite(pitchRef.current)) {
-        pitchRef.current = DEFAULT_PITCH;
-      }
+      if (!Number.isFinite(pitchRef.current)) pitchRef.current = DEFAULT_PITCH;
       pitchRef.current = THREE.MathUtils.clamp(pitchRef.current, MIN_PITCH, MAX_PITCH);
-
-      // Validate distance
       if (!Number.isFinite(distanceRef.current)) distanceRef.current = DEFAULT_DISTANCE;
       if (!Number.isFinite(desiredDistanceRef.current)) desiredDistanceRef.current = DEFAULT_DISTANCE;
       desiredDistanceRef.current = THREE.MathUtils.clamp(desiredDistanceRef.current, MIN_DISTANCE, MAX_DISTANCE);
 
-      // Smooth desired distance
-      distanceRef.current = THREE.MathUtils.lerp(
-        distanceRef.current,
-        desiredDistanceRef.current,
-        delta * 4
-      );
-
+      distanceRef.current = THREE.MathUtils.lerp(distanceRef.current, desiredDistanceRef.current, delta * 4);
       if (!Number.isFinite(distanceRef.current)) distanceRef.current = DEFAULT_DISTANCE;
 
-      // Player position - target at chest height 1.4m
       const playerPos = new THREE.Vector3(pPos[0], pPos[1], pPos[2]);
       const targetHeight = 1.4;
       const desiredTarget = new THREE.Vector3(playerPos.x, playerPos.y + targetHeight, playerPos.z);
 
       if (!initializedRef.current) {
-        // First frame: copy directly, no lerp from [0,0,0]
         cameraTargetRef.current.copy(desiredTarget);
-        // Also set camera position directly to desired behind player
-        const pitch = pitchRef.current;
-        const dist = distanceRef.current;
-        const horiz = dist * Math.cos(pitch);
-        const vert = dist * Math.sin(pitch);
+        const horiz = distanceRef.current * Math.cos(pitch);
+        const vert = distanceRef.current * Math.sin(pitch);
         const offsetX = -Math.sin(yaw) * horiz;
         const offsetZ = -Math.cos(yaw) * horiz;
         const offsetY = vert + 0.3;
-        cameraPosRef.current.set(
-          desiredTarget.x + offsetX,
-          desiredTarget.y + offsetY,
-          desiredTarget.z + offsetZ
-        );
+        cameraPosRef.current.set(desiredTarget.x + offsetX, desiredTarget.y + offsetY, desiredTarget.z + offsetZ);
         initializedRef.current = true;
-        console.log(`[Camera] Initialized target ${desiredTarget.x.toFixed(2)},${desiredTarget.y.toFixed(2)},${desiredTarget.z.toFixed(2)} pos ${cameraPosRef.current.x.toFixed(2)},${cameraPosRef.current.y.toFixed(2)},${cameraPosRef.current.z.toFixed(2)}`);
+        console.log(`[Camera] Initialized target ${desiredTarget.x.toFixed(2)},${desiredTarget.y.toFixed(2)},${desiredTarget.z.toFixed(2)} pos ${cameraPosRef.current.x.toFixed(2)},${cameraPosRef.current.y.toFixed(2)},${cameraPosRef.current.z.toFixed(2)} yaw ${yaw.toFixed(2)}`);
       } else {
         cameraTargetRef.current.lerp(desiredTarget, delta * 12);
       }
 
-      if (!Number.isFinite(cameraTargetRef.current.x) || !Number.isFinite(cameraTargetRef.current.y) || !Number.isFinite(cameraTargetRef.current.z)) {
-        cameraTargetRef.current.copy(desiredTarget);
-      }
+      if (!Number.isFinite(cameraTargetRef.current.x)) cameraTargetRef.current.copy(desiredTarget);
 
-      const pitch = pitchRef.current;
       const desiredDistance = distanceRef.current;
-      
       const horizontalDist = desiredDistance * Math.cos(pitch);
       const verticalDist = desiredDistance * Math.sin(pitch);
-      
       const offsetX = -Math.sin(yaw) * horizontalDist;
       const offsetZ = -Math.cos(yaw) * horizontalDist;
       const offsetY = verticalDist + 0.3;
@@ -238,34 +253,15 @@ export function CameraController() {
         cameraTargetRef.current.z + offsetZ
       );
 
-      if (!Number.isFinite(desiredPos.x) || !Number.isFinite(desiredPos.y) || !Number.isFinite(desiredPos.z)) {
-        desiredPos.set(
-          cameraTargetRef.current.x,
-          cameraTargetRef.current.y + 2.2,
-          cameraTargetRef.current.z + 5
-        );
-      }
+      if (!Number.isFinite(desiredPos.x)) desiredPos.set(cameraTargetRef.current.x, cameraTargetRef.current.y + 2.2, cameraTargetRef.current.z + 5);
 
-      // CAMERA COLLISION DISABLED FOR THIS FIX
       let finalDistance = desiredDistance;
-      let collisionHit = false;
-      let hitDistance = -1;
-      let hitInfo = 'collision disabled (player fix)';
-
-      if (!Number.isFinite(finalDistance)) finalDistance = desiredDistance;
       finalDistance = THREE.MathUtils.clamp(finalDistance, 1.5, MAX_DISTANCE);
-
-      currentDistanceRef.current = THREE.MathUtils.lerp(
-        currentDistanceRef.current,
-        finalDistance,
-        delta * 5
-      );
-
+      currentDistanceRef.current = THREE.MathUtils.lerp(currentDistanceRef.current, finalDistance, delta * 5);
       if (!Number.isFinite(currentDistanceRef.current)) currentDistanceRef.current = DEFAULT_DISTANCE;
 
       const finalHorizontal = currentDistanceRef.current * Math.cos(pitch);
       const finalVertical = currentDistanceRef.current * Math.sin(pitch);
-      
       const finalOffsetX = -Math.sin(yaw) * finalHorizontal;
       const finalOffsetZ = -Math.cos(yaw) * finalHorizontal;
       const finalOffsetY = finalVertical + 0.3;
@@ -276,35 +272,19 @@ export function CameraController() {
         cameraTargetRef.current.z + finalOffsetZ
       );
 
-      if (finalDesiredPos.y < 0.8) {
-        finalDesiredPos.y = 0.8;
-      }
+      if (finalDesiredPos.y < 0.8) finalDesiredPos.y = 0.8;
+      if (!Number.isFinite(finalDesiredPos.x)) finalDesiredPos.copy(desiredPos);
 
-      if (!Number.isFinite(finalDesiredPos.x) || !Number.isFinite(finalDesiredPos.y) || !Number.isFinite(finalDesiredPos.z)) {
-        finalDesiredPos.copy(desiredPos);
-      }
-
-      // HARD RESET if distance camera->player >20m
-      const distToPlayer = finalDesiredPos.distanceTo(new THREE.Vector3(pPos[0], pPos[1]+1.4, pPos[2]));
-      // Actually check cameraPosRef to player
       const currentDistToPlayer = cameraPosRef.current.distanceTo(new THREE.Vector3(pPos[0], pPos[1]+1.4, pPos[2]));
       if (currentDistToPlayer > 20) {
-        console.warn(`[Camera] Distance to player ${currentDistToPlayer.toFixed(1)}m >20m - hard reset`);
+        console.warn(`[Camera] Distance ${currentDistToPlayer.toFixed(1)}m >20m hard reset`);
         cameraPosRef.current.copy(finalDesiredPos);
         cameraTargetRef.current.copy(desiredTarget);
         currentDistanceRef.current = desiredDistance;
       }
 
-      if (!initializedRef.current) {
-        cameraPosRef.current.copy(finalDesiredPos);
-      } else {
-        const smoothSpeed = 8;
-        cameraPosRef.current.lerp(finalDesiredPos, delta * smoothSpeed);
-      }
-      
-      if (!Number.isFinite(cameraPosRef.current.x) || !Number.isFinite(cameraPosRef.current.y) || !Number.isFinite(cameraPosRef.current.z)) {
-        cameraPosRef.current.copy(finalDesiredPos);
-      }
+      cameraPosRef.current.lerp(finalDesiredPos, delta * 8);
+      if (!Number.isFinite(cameraPosRef.current.x)) cameraPosRef.current.copy(finalDesiredPos);
 
       (camera as THREE.PerspectiveCamera).fov = FOV;
       (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
@@ -314,6 +294,7 @@ export function CameraController() {
       (window as any).__cameraPosition = cameraPosRef.current.clone();
       (window as any).__cameraTarget = cameraTargetRef.current.clone();
       (window as any).__cameraDistance = currentDistanceRef.current;
+      // Mirror, not source
       (window as any).__cameraYaw = yawRef.current;
       (window as any).__cameraPitch = pitchRef.current;
       (window as any).__cameraDebug = {
@@ -323,22 +304,26 @@ export function CameraController() {
         currentDistance: currentDistanceRef.current.toFixed(2),
         finalDistance: finalDistance.toFixed(2),
         collisionEnabled: false,
-        collisionHit,
-        hitDistance: hitDistance >= 0 ? hitDistance.toFixed(2) : 'none',
-        hitInfo,
+        collisionHit: false,
+        hitDistance: 'none',
+        hitInfo: 'collision disabled (camera yaw fix)',
         playerPos: `${playerPos.x.toFixed(2)},${playerPos.y.toFixed(2)},${playerPos.z.toFixed(2)} from ${isFromRef ? 'REF' : 'ZUSTAND'}`,
         cameraPos: `${cameraPosRef.current.x.toFixed(2)},${cameraPosRef.current.y.toFixed(2)},${cameraPosRef.current.z.toFixed(2)}`,
         targetPos: `${cameraTargetRef.current.x.toFixed(2)},${cameraTargetRef.current.y.toFixed(2)},${cameraTargetRef.current.z.toFixed(2)}`,
         initialized: initializedRef.current,
         distToPlayer: currentDistToPlayer.toFixed(2),
+        mouseDelta: `${mouseDeltaRef.current.x},${mouseDeltaRef.current.y}`,
+        yawPrev: prevYawRef.current.toFixed(3),
+        yawCurr: yawRef.current.toFixed(3),
+        pointerLock: document.pointerLockElement ? 'YES' : 'NO',
       };
     } catch (e) {
-      console.error('[Camera] Frame error, fallback', e);
+      console.error('[Camera] Frame error', e);
       try {
         const playerPos = new THREE.Vector3(playerPosition[0], playerPosition[1], playerPosition[2]);
-        if (!Number.isFinite(playerPos.x)) playerPos.set(15, 2, 15);
+        if (!Number.isFinite(playerPos.x)) playerPos.set(15, 3, 15);
         cameraTargetRef.current.lerp(new THREE.Vector3(playerPos.x, playerPos.y + 1.4, playerPos.z), delta * 5);
-        const yaw = (window as any).__cameraYaw ?? 0;
+        const yaw = yawRef.current ?? 0;
         const dist = 4.5;
         const pitch = 0.25;
         const horiz = dist * Math.cos(pitch);

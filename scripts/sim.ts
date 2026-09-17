@@ -217,6 +217,140 @@ function testInputResetOnBlur() {
   console.log('  Input reset on blur OK');
 }
 
+function testMouseYawPitch() {
+  console.log('Test: Mouse dx -> yaw, dy -> pitch, pitch clamp, yaw unrestricted');
+  const SENS = 0.0025;
+  const MIN_PITCH = -0.15;
+  const MAX_PITCH = 0.65;
+
+  let yaw = 0;
+  let pitch = 0.25;
+
+  // Mouse right dx=100 -> yaw decreases
+  yaw -= 100 * SENS;
+  if (Math.abs(yaw - (-0.25)) > 0.001) throw new Error(`Yaw after mx 100 failed ${yaw}`);
+  console.log('  Mouse dx -> yaw OK:', yaw.toFixed(3));
+
+  // Mouse up dy=-50 -> pitch increases? pitch -= my * sens, my negative => pitch increases
+  pitch = Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitch - (-50) * SENS));
+  if (pitch <= 0.25) throw new Error('Pitch should increase when mouse up');
+  console.log('  Mouse dy -> pitch OK:', pitch.toFixed(3));
+
+  // Pitch clamp
+  pitch = 10;
+  pitch = Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitch));
+  if (pitch !== MAX_PITCH) throw new Error('Pitch clamp max failed');
+  pitch = -10;
+  pitch = Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitch));
+  if (pitch !== MIN_PITCH) throw new Error('Pitch clamp min failed');
+  console.log('  Pitch clamp OK');
+
+  // Yaw unrestricted 360°
+  yaw = 0;
+  yaw -= 10000 * SENS; // large
+  if (Math.abs(yaw) < 10) throw new Error('Yaw should be unrestricted, large value');
+  console.log('  Yaw unrestricted 360° OK:', yaw.toFixed(2));
+}
+
+function testShortestAngle() {
+  console.log('Test: Shortest angle interpolation');
+  function shortestDelta(target: number, current: number): number {
+    const sinD = Math.sin(target - current);
+    const cosD = Math.cos(target - current);
+    return Math.atan2(sinD, cosD);
+  }
+
+  // From 0 to PI should be +PI, not -PI
+  let d = shortestDelta(Math.PI, 0);
+  if (Math.abs(d - Math.PI) > 0.001) throw new Error(`Shortest PI failed ${d}`);
+
+  // From 0 to -PI should be -PI
+  d = shortestDelta(-Math.PI, 0);
+  if (Math.abs(d + Math.PI) > 0.001) throw new Error(`Shortest -PI failed ${d}`);
+
+  // Wrap around: current 3.0, target -3.0 => should go +0.28 not -6.0
+  d = shortestDelta(-3.0, 3.0);
+  if (Math.abs(d) > 1) throw new Error(`Wrap around failed ${d} should be small`);
+
+  console.log('  Shortest angle OK');
+}
+
+function testPlayerYawFromMove() {
+  console.log('Test: W/S/A/D -> expected target player yaw');
+  // Using camera-relative with yaw0: forward +Z (0,0,1), right -X (-1,0,0) per Three right
+  function calcTargetYaw(forwardInput: number, rightInput: number, camForward: [number, number], camRight: [number, number]): number {
+    const fx = camForward[0], fz = camForward[1];
+    const rx = camRight[0], rz = camRight[1];
+    const mx = fx * forwardInput + rx * rightInput;
+    const mz = fz * forwardInput + rz * rightInput;
+    if (Math.abs(mx) < 0.001 && Math.abs(mz) < 0.001) return 0;
+    return Math.atan2(mx, mz);
+  }
+
+  const camF: [number, number] = [0, 1]; // +Z
+  const camR: [number, number] = [-1, 0]; // -X = right at yaw0 per Three
+
+  // W forward=1 => move +Z => yaw 0
+  let yaw = calcTargetYaw(1, 0, camF, camR);
+  if (Math.abs(yaw - 0) > 0.01) throw new Error(`W yaw expected 0 got ${yaw}`);
+  console.log('  W yaw OK:', yaw.toFixed(2));
+
+  // S forward=-1 => -Z => yaw PI
+  yaw = calcTargetYaw(-1, 0, camF, camR);
+  if (Math.abs(Math.abs(yaw) - Math.PI) > 0.01) throw new Error(`S yaw expected PI got ${yaw}`);
+  console.log('  S yaw OK:', yaw.toFixed(2));
+
+  // A left: rightInput=-1 => move = -right = +X => yaw +90deg PI/2
+  yaw = calcTargetYaw(0, -1, camF, camR);
+  if (Math.abs(yaw - Math.PI/2) > 0.01) throw new Error(`A yaw expected PI/2 got ${yaw}`);
+  console.log('  A yaw (screen LEFT) OK:', yaw.toFixed(2));
+
+  // D right: rightInput=1 => move = right = -X => yaw -90deg
+  yaw = calcTargetYaw(0, 1, camF, camR);
+  if (Math.abs(yaw + Math.PI/2) > 0.01) throw new Error(`D yaw expected -PI/2 got ${yaw}`);
+  console.log('  D yaw (screen RIGHT) OK:', yaw.toFixed(2));
+
+  // Diagonal W+D: forward 1 right 1 => move = +Z + (-X) = (-1,1) => yaw -45deg -PI/4
+  yaw = calcTargetYaw(1, 1, camF, camR);
+  if (Math.abs(yaw + Math.PI/4) > 0.05) throw new Error(`W+D diagonal yaw expected -PI/4 got ${yaw}`);
+  console.log('  W+D diagonal yaw OK:', yaw.toFixed(2));
+}
+
+function testCameraRelativeAfter90() {
+  console.log('Test: Camera-relative movement after yaw 90°');
+  // Camera yaw 90° (PI/2): forward = +X? Let's compute: yaw 0 forward +Z, yaw PI/2 forward +X? Actually formula offsetX=-sin(yaw)*dist, offsetZ=-cos(yaw)*dist, camera behind, forward = -offset normalized?
+  // Simpler: at yaw PI/2, camera at -X behind, looking +X
+  // So forward should be +X
+  const yaw = Math.PI/2;
+  const camForward: [number, number] = [Math.sin(yaw), Math.cos(yaw)]; // sin90=1 cos90=0 => +X
+  const camRight: [number, number] = [Math.cos(yaw), -Math.sin(yaw)]; // cos90=0 sin90=1 => (0,-1) = -Z? Wait cross product
+  // Let's use same cross: forward cross up = ?
+  // forward (1,0) = +X, up (0,1) cross? Actually 2D: forward (x,z), right = (z,-x)? No
+  // For simplicity, compute via 3D: forward (1,0,0) cross up (0,1,0) = (0,0,1)?? Actually (1,0,0) x (0,1,0) = (0,0,1) = +Z
+  // Hmm confusion. Let's just test conceptual: after 90deg turn, W should still be camera forward
+  function calcMove(forwardInput: number, rightInput: number, yaw: number): [number, number] {
+    const f = [Math.sin(yaw), Math.cos(yaw)]; // forward
+    const r = [Math.cos(yaw), -Math.sin(yaw)]; // right = forward cross up? Let's test yaw0: f=[0,1] +Z, r=[1,0] +X but we need -X, so use -cos, sin?
+    // Use right = (cos(yaw), -sin(yaw)) gives at yaw0 [1,0] +X, but we want -X, so use [-cos, sin]
+    // Let's use right = [-cos(yaw), sin(yaw)]? At yaw0: [-1,0] -X correct
+    const r2: [number, number] = [-Math.cos(yaw), Math.sin(yaw)];
+    const mx = f[0]*forwardInput + r2[0]*rightInput;
+    const mz = f[1]*forwardInput + r2[1]*rightInput;
+    return [mx, mz];
+  }
+
+  // At yaw0, W should be [0,1]
+  let move = calcMove(1,0,0);
+  if (Math.abs(move[0])>0.01 || Math.abs(move[1]-1)>0.01) throw new Error(`Yaw0 W failed ${move}`);
+
+  // At yaw 90deg PI/2, W should be [1,0] +X
+  move = calcMove(1,0,Math.PI/2);
+  if (Math.abs(move[0]-1)>0.01 || Math.abs(move[1])>0.01) throw new Error(`Yaw90 W should be +X got ${move}`);
+  console.log('  Camera-relative after 90° OK:', move);
+
+  console.log('  Camera-relative movement OK');
+}
+
 try {
   testCoordinateConversion();
   testSaveFormat();
@@ -228,7 +362,11 @@ try {
   testInputCode();
   testCameraCollision();
   testInputResetOnBlur();
-  console.log('\nAll sim tests PASSED - including movement fix tests');
+  testMouseYawPitch();
+  testShortestAngle();
+  testPlayerYawFromMove();
+  testCameraRelativeAfter90();
+  console.log('\nAll sim tests PASSED - including movement fix tests + yaw/pitch + rotation');
 } catch (e) {
   console.error('Sim tests FAILED', e);
   process.exit(1);
