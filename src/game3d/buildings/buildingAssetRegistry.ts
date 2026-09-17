@@ -28,10 +28,10 @@ export const BUILDING_ASSETS: BuildingAssetDefinition[] = [
     id: 'abandoned_house_01',
     url: '/models/buildings/abandoned/abandoned_house_01.glb',
     type: 'abandoned',
-    scale: 1,
-    rotation: 0,
-    yOffset: 0,
-    expectedHeight: 12,
+    scale: 14.8, // explicit local scale based on real production Box3: raw H 0.912 -> 13.5m
+    rotation: 0, // front should face +Z to sidewalk, tune if needed (0 or PI)
+    yOffset: 0, // raw minY≈0 so base near ground Y=0
+    expectedHeight: 13.5,
     collider: 'cuboid',
   },
 ];

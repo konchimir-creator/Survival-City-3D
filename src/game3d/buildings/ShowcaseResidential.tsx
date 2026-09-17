@@ -1,5 +1,5 @@
 'use client';
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
@@ -37,49 +37,42 @@ export function ShowcaseResidential({ def }: { def: BuildingDef }) {
   const floorHeight = DIMS.floorHeight;
   const floors = Math.floor(height / floorHeight); // 6
   const plinthHeight = DIMS.plinthHeight;
-  const doorWidth = DIMS.doorWidth;
-  const doorHeight = DIMS.doorHeight;
+  const doorWidth = DIMS.doorWidth; // visual 1.1m
+  const doorHeight = DIMS.doorHeight; // visual 2.15m
+  const physicalDoorWidth = 1.4; // physical opening wider for capsule [0.65,0.35] clearance
+  const physicalDoorHeight = 2.4;
   const wallThickness = DIMS.wallThickness;
   const stepHeight = DIMS.stepHeight;
 
-  // Door at front center, facing +Z towards sidewalk
   const doorX = 0;
   const doorZ = depth / 2;
 
-  // Collider math derived from DIMS only, no magic 6.825
   const halfW = width / 2;
   const halfH = height / 2;
   const halfD = depth / 2;
 
-  // Front/back/left/right positions = edge - thickness/2
   const frontZ = halfD - wallThickness / 2;
   const backZ = -halfD + wallThickness / 2;
   const leftX = -halfW + wallThickness / 2;
   const rightX = halfW - wallThickness / 2;
 
-  // Front split for door opening
-  const frontLeftWidth = halfW - doorWidth / 2;
+  // Front split for door opening - use physicalDoorWidth for clearance
+  const frontLeftWidth = halfW - physicalDoorWidth / 2;
   const frontLeftHalfW = frontLeftWidth / 2;
   const frontLeftCenterX = -halfW + frontLeftHalfW;
 
   const frontRightHalfW = frontLeftHalfW;
   const frontRightCenterX = halfW - frontRightHalfW;
 
-  const topHeight = height - doorHeight;
+  const topHeight = height - physicalDoorHeight;
   const topHalfH = topHeight / 2;
-  const topCenterY = doorHeight + topHalfH;
+  const topCenterY = physicalDoorHeight + topHalfH;
 
-  // Interior floor - visual and physical must match within 1cm
-  // Entrance raised by 2 steps = 0.32m
   const entranceRaise = stepHeight * 2; // 0.32
   const visualFloorY = entranceRaise; // 0.32
   const floorColliderHalfH = 0.12;
-  const floorColliderPosY = visualFloorY - floorColliderHalfH + 0.12; // top = posY + halfH = visualFloorY + 0.12? Let's compute exact
-  // We want physical top = visual floor surface
-  // physical top = posY + halfH
-  // Set posY = visualFloorY - halfH
-  const floorPhysPosY = visualFloorY - floorColliderHalfH;
-  const floorPhysTopY = floorPhysPosY + floorColliderHalfH; // should = visualFloorY
+  const floorPhysPosY = visualFloorY - floorColliderHalfH; // top = visualFloorY
+  const floorPhysTopY = floorPhysPosY + floorColliderHalfH;
 
   const floorHalfW = halfW - wallThickness;
   const floorHalfD = halfD - wallThickness;
@@ -302,24 +295,33 @@ export function ShowcaseResidential({ def }: { def: BuildingDef }) {
     } catch {}
   });
 
+  const [showDebug, setShowDebug] = useState(false);
+  useEffect(() => {
+    const interval = setInterval(() => setShowDebug(!!(window as any).__showDebug), 300);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <RigidBody type="fixed" colliders={false} position={position} rotation={[0, rotation, 0]}>
-      {/* Exterior colliders - full height 18m, derived from DIMS */}
+      {/* Exterior colliders - full height 18m, derived from DIMS, door opening physically free */}
       <CuboidCollider args={[frontLeftHalfW, halfH, wallThickness / 2]} position={[frontLeftCenterX, halfH, frontZ]} />
       <CuboidCollider args={[frontRightHalfW, halfH, wallThickness / 2]} position={[frontRightCenterX, halfH, frontZ]} />
-      <CuboidCollider args={[doorWidth / 2, topHalfH, wallThickness / 2]} position={[doorX, topCenterY, frontZ]} />
+      <CuboidCollider args={[physicalDoorWidth / 2, topHalfH, wallThickness / 2]} position={[doorX, topCenterY, frontZ]} />
       <CuboidCollider args={[halfW, halfH, wallThickness / 2]} position={[0, halfH, backZ]} />
       <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[leftX, halfH, 0]} />
       <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[rightX, halfH, 0]} />
       {/* Interior floor - top matches visual floor Y=0.32 within 1cm */}
       <CuboidCollider args={[floorHalfW, floorColliderHalfH, floorHalfD]} position={[0, floorPhysPosY, 0]} />
-      {/* Interior vestibule walls */}
+      {/* Interior vestibule walls - corridor 3m wide, not blocking door */}
       <CuboidCollider args={[0.15, 1.4, 1.5]} position={[-1.5, 1.4 + entranceRaise, halfD - 1.5]} />
       <CuboidCollider args={[0.15, 1.4, 1.5]} position={[1.5, 1.4 + entranceRaise, halfD - 1.5]} />
       <CuboidCollider args={[1.5, 1.4, 0.15]} position={[0, 1.4 + entranceRaise, halfD - 3]} />
-      {/* Steps colliders - physically correct 0.16m each */}
-      <CuboidCollider args={[0.9, stepHeight/2, 0.45]} position={[doorX, stepHeight/2, doorZ + 0.5]} />
-      <CuboidCollider args={[0.8, stepHeight/2, 0.3]} position={[doorX, stepHeight + stepHeight/2, doorZ + 0.35]} />
+      {/* Steps - make ramp collider for frozen player capsule to climb, visual steps remain */}
+      {/* Visual steps at Y 0.08 and 0.24, but physical ramp from ground 0 to 0.32 over Z 0.5-0.9 */}
+      <CuboidCollider args={[0.9, 0.05, 0.5]} position={[doorX, 0.05, doorZ + 0.65]} />
+      <CuboidCollider args={[0.9, 0.05, 0.5]} position={[doorX, 0.20, doorZ + 0.35]} />
+      {/* Invisible ramp over steps - flat enough for capsule */}
+      <CuboidCollider args={[0.8, 0.16, 0.6]} position={[doorX, 0.16, doorZ + 0.45]} rotation={[ -0.3, 0, 0 ] as any} />
 
       <group>
         {/* Plinth 0.6m */}
@@ -417,6 +419,17 @@ export function ShowcaseResidential({ def }: { def: BuildingDef }) {
           <mesh position={[0, 2.7, 0]}><boxGeometry args={[0.4, 0.05, 0.4]} /><meshStandardMaterial color="#ffffcc" emissive="#ffcc88" emissiveIntensity={0.7} /></mesh>
           <mesh position={[0, 1.2, 1.5]}><boxGeometry args={[1.2, 2.15, 0.08]} /><meshStandardMaterial color="#3a2a1a" roughness={0.8} /></mesh>
         </group>
+
+        {/* Debug colliders visualization via F3 */}
+        {showDebug && (
+          <group>
+            <mesh position={[frontLeftCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, height, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.25} /></mesh>
+            <mesh position={[frontRightCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, height, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.25} /></mesh>
+            <mesh position={[0, topCenterY, frontZ]}><boxGeometry args={[physicalDoorWidth, topHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.25} /></mesh>
+            <mesh position={[0, physicalDoorHeight/2, frontZ]}><boxGeometry args={[physicalDoorWidth, physicalDoorHeight, 0.1]} /><meshBasicMaterial color="#00ff00" wireframe transparent opacity={0.5} /></mesh>
+            <mesh position={[0, floorPhysPosY, 0]}><boxGeometry args={[floorHalfW*2, floorColliderHalfH*2, floorHalfD*2]} /><meshBasicMaterial color="#0000ff" wireframe transparent opacity={0.2} /></mesh>
+          </group>
+        )}
       </group>
     </RigidBody>
   );

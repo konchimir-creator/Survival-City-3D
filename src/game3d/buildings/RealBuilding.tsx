@@ -78,7 +78,7 @@ function useBuildingGLBExists(url: string) {
   return exists;
 }
 
-// Inner GLB loader with full diagnostics
+// Inner GLB loader with full diagnostics - FIXED for real production Box3
 function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
   const gltf = useGLTF(url) as any;
   const loggedRef = useRef(false);
@@ -92,10 +92,8 @@ function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
         return null;
       }
 
-      // Clone for safe manipulation
       const cloned = scene.clone(true);
 
-      // Count meshes, triangles, materials, textures
       let meshCount = 0;
       let triangleCount = 0;
       const materials = new Set<string>();
@@ -110,21 +108,14 @@ function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
           if (child.visible) visibleMeshes++; else invisibleMeshes++;
           const geom = child.geometry;
           if (geom) {
-            if (geom.index) {
-              triangleCount += geom.index.count / 3;
-            } else if (geom.attributes && geom.attributes.position) {
-              triangleCount += geom.attributes.position.count / 3;
-            }
+            if (geom.index) triangleCount += geom.index.count / 3;
+            else if (geom.attributes?.position) triangleCount += geom.attributes.position.count / 3;
           }
           if (child.material) {
             const mats = Array.isArray(child.material) ? child.material : [child.material];
             mats.forEach((m: any) => {
               const name = m.name || m.type || 'unnamed';
-              if (!materials.has(name)) {
-                materials.add(name);
-                materialList.push(name);
-              }
-              // Check textures
+              if (!materials.has(name)) { materials.add(name); materialList.push(name); }
               if (m.map) textureCount++;
               if (m.normalMap) textureCount++;
               if (m.roughnessMap) textureCount++;
@@ -132,14 +123,13 @@ function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
               if (m.emissiveMap) textureCount++;
             });
           }
-          // Check NaN transforms
           if (child.position && (isNaN(child.position.x) || isNaN(child.position.y) || isNaN(child.position.z))) {
-            console.warn('[RealBuilding] Mesh has NaN position', child.name);
+            console.warn('[RealBuilding] Mesh NaN position', child.name);
           }
         }
       });
 
-      // Box3 BEFORE transform
+      // Box3 BEFORE any transform
       const box = new THREE.Box3().setFromObject(cloned);
       const size = new THREE.Vector3();
       box.getSize(size);
@@ -147,29 +137,32 @@ function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
       box.getCenter(center);
 
       const raw = {
-        minX: box.min.x,
-        minY: box.min.y,
-        minZ: box.min.z,
-        maxX: box.max.x,
-        maxY: box.max.y,
-        maxZ: box.max.z,
-        width: size.x,
-        height: size.y,
-        depth: size.z,
-        centerX: center.x,
-        centerY: center.y,
-        centerZ: center.z,
+        minX: box.min.x, minY: box.min.y, minZ: box.min.z,
+        maxX: box.max.x, maxY: box.max.y, maxZ: box.max.z,
+        width: size.x, height: size.y, depth: size.z,
+        centerX: center.x, centerY: center.y, centerZ: center.z,
       };
 
-      // Apply shadows
+      // Center model horizontally to handle asymmetric raw Box3 (centerX -0.064 etc)
+      // Keep vertical as is because minY≈0
+      // Translate cloned so its center XZ is at 0,0, bottom stays at minY
+      const offsetX = -raw.centerX;
+      const offsetZ = -raw.centerZ;
+      // Apply offset to cloned scene position, not to each mesh, to keep Box3 centered
+      cloned.position.set(offsetX, 0, offsetZ);
+
+      // Recompute Box3 after centering for final size check
+      const centeredBox = new THREE.Box3().setFromObject(cloned);
+      const centeredSize = new THREE.Vector3();
+      centeredBox.getSize(centeredSize);
+
+      // Shadows, no culling for diagnosis
       cloned.traverse((child: any) => {
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
-          child.frustumCulled = false; // disable culling for diagnosis, ensure visible
-          if (child.material) {
-            child.material.needsUpdate = true;
-          }
+          child.frustumCulled = false;
+          if (child.material) child.material.needsUpdate = true;
         }
       });
 
@@ -183,6 +176,9 @@ function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
         visibleMeshes,
         invisibleMeshes,
         raw,
+        centeredSize,
+        offsetX,
+        offsetZ,
         box,
         size,
         center,
@@ -193,56 +189,21 @@ function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
     }
   }, [gltf.scene, url]);
 
-  // Compute final transform based on real Box3, not expectedHeight=12 blindly
   const finalTransform = useMemo(() => {
-    if (!diagnostics) {
-      return { scale: 1, rotation: 0, yOffset: 0, width: def.size[0], height: def.size[1], depth: def.size[2] };
-    }
-
-    const { raw, size } = diagnostics;
+    if (!diagnostics) return { scale: 14.8, rotation: 0, yOffset: 0, width: 0.621, height: 0.912, depth: 0.571, raw: null as any };
+    const { raw } = diagnostics;
     const assetConfig = BUILDING_ASSETS.find(a => a.url === url || a.id === 'abandoned_house_01');
 
-    // Real dimensions
-    let finalScale: number | [number, number, number] = 1;
-    let finalRotation = 0;
+    let finalScale: number | [number, number, number] = assetConfig?.scale || 14.8;
+    let finalRotation = assetConfig?.rotation || 0;
     let finalYOffset = 0;
 
-    // Use config if provided, but also auto-adjust based on real Box3
-    if (assetConfig?.scale) {
-      finalScale = assetConfig.scale;
-    } else {
-      // If model is huge (e.g., 100+ units) or tiny (<1), it may be in cm or wrong units
-      // For now keep 1, but log
-      if (size.y > 100) {
-        console.warn(`[RealBuilding] Model height ${size.y.toFixed(2)} seems too large, check units, using scale 0.01`);
-        finalScale = 0.01;
-      } else if (size.y < 0.5) {
-        console.warn(`[RealBuilding] Model height ${size.y.toFixed(2)} seems too small, check units`);
-      }
-    }
-
-    if (assetConfig?.rotation !== undefined) {
-      finalRotation = assetConfig.rotation;
-    }
-
-    // yOffset: minY should correspond to ground Y≈0
-    // If raw minY is not near 0, offset to bring bottom to 0
     const minY = raw.minY;
-    if (assetConfig?.yOffset !== undefined && assetConfig.yOffset !== 0) {
-      finalYOffset = assetConfig.yOffset;
-    } else {
-      // Auto yOffset to bring bottom to ground
-      if (Math.abs(minY) > 0.05) {
-        finalYOffset = -minY;
-        console.log(`[RealBuilding] Auto yOffset computed: minY ${minY.toFixed(3)} -> yOffset ${finalYOffset.toFixed(3)}`);
-      }
+    if (Math.abs(minY) > 0.01) {
+      finalYOffset = -minY;
+      console.log(`[RealBuilding] Auto yOffset: minY ${minY.toFixed(3)} -> ${finalYOffset.toFixed(3)}`);
     }
-
-    // Orientation: determine front facade
-    // For abandoned_1 at [-110,0,-20], front should face +Z towards sidewalk/road at Z=0
-    // If model front faces -Z, need rotation PI
-    // We can't auto-detect door without file, but log center and dimensions for manual tuning
-    // For now keep rotation 0, but allow config
+    if (assetConfig?.yOffset && assetConfig.yOffset !== 0) finalYOffset = assetConfig.yOffset;
 
     return {
       scale: finalScale,
@@ -253,14 +214,11 @@ function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
       depth: raw.depth,
       raw,
     };
-  }, [diagnostics, def.size, url]);
+  }, [diagnostics, url]);
 
-  // One-time console.info after successful load
   useEffect(() => {
     if (!diagnostics || loggedRef.current) return;
     loggedRef.current = true;
-
-    const assetConfig = BUILDING_ASSETS.find(a => a.url === url || a.id === 'abandoned_house_01');
 
     console.info('[RealBuilding] GLB loaded');
     console.info(`url: ${url}`);
@@ -270,12 +228,13 @@ function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
     console.info(`textures: ${diagnostics.textureCount}`);
     console.info(`visibleMeshes: ${diagnostics.visibleMeshes} invisibleMeshes: ${diagnostics.invisibleMeshes}`);
     console.info(`Box3 raw: minX ${diagnostics.raw.minX.toFixed(3)} minY ${diagnostics.raw.minY.toFixed(3)} minZ ${diagnostics.raw.minZ.toFixed(3)} maxX ${diagnostics.raw.maxX.toFixed(3)} maxY ${diagnostics.raw.maxY.toFixed(3)} maxZ ${diagnostics.raw.maxZ.toFixed(3)}`);
-    console.info(`size: width ${diagnostics.raw.width.toFixed(3)} height ${diagnostics.raw.height.toFixed(3)} depth ${diagnostics.raw.depth.toFixed(3)}`);
-    console.info(`center: ${diagnostics.raw.centerX.toFixed(3)}, ${diagnostics.raw.centerY.toFixed(3)}, ${diagnostics.raw.centerZ.toFixed(3)}`);
+    console.info(`size raw: W ${diagnostics.raw.width.toFixed(3)} H ${diagnostics.raw.height.toFixed(3)} D ${diagnostics.raw.depth.toFixed(3)}`);
+    console.info(`center raw: X ${diagnostics.raw.centerX.toFixed(3)} Y ${diagnostics.raw.centerY.toFixed(3)} Z ${diagnostics.raw.centerZ.toFixed(3)} offsetX ${diagnostics.offsetX.toFixed(3)} offsetZ ${diagnostics.offsetZ.toFixed(3)}`);
+    const scaleNum = typeof finalTransform.scale === 'number' ? finalTransform.scale as number : 14.8;
+    console.info(`expected world size after scale ${scaleNum}: W ${(diagnostics.raw.width * scaleNum).toFixed(2)} H ${(diagnostics.raw.height * scaleNum).toFixed(2)} D ${(diagnostics.raw.depth * scaleNum).toFixed(2)}`);
     console.info(`scale: ${typeof finalTransform.scale === 'number' ? finalTransform.scale : JSON.stringify(finalTransform.scale)} rotation: ${finalTransform.rotation} yOffset: ${finalTransform.yOffset}`);
-    console.info(`scene.visible: ${gltf.scene.visible} parent: ${gltf.scene.parent?.type || 'no parent'}`);
+    console.info(`scene.visible: ${gltf.scene.visible}`);
 
-    // F3 diagnostics
     (window as any).__buildingDims = (window as any).__buildingDims || {};
     (window as any).__buildingDims[def.id] = {
       width: diagnostics.raw.width,
@@ -286,37 +245,24 @@ function GLBInner({ url, def }: { url: string; def: BuildingDef }) {
       meshCount: diagnostics.meshCount,
       triangles: diagnostics.triangleCount,
       materials: diagnostics.materials,
+      offsetX: diagnostics.offsetX,
+      offsetZ: diagnostics.offsetZ,
+      scale: finalTransform.scale,
     };
-    (window as any).__lastBuildingDims = `${def.id}: ${diagnostics.raw.width.toFixed(1)}x${diagnostics.raw.height.toFixed(1)}x${diagnostics.raw.depth.toFixed(1)}m meshes:${diagnostics.meshCount} tris:${diagnostics.triangleCount} scale:${typeof finalTransform.scale === 'number' ? finalTransform.scale : JSON.stringify(finalTransform.scale)} yOff:${finalTransform.yOffset.toFixed(2)} rot:${finalTransform.rotation.toFixed(2)}`;
-
-    // Check for common issues
-    if (diagnostics.meshCount === 0) {
-      console.warn('[RealBuilding] No meshes found in GLB!');
-    }
-    if (diagnostics.raw.width === 0 || diagnostics.raw.height === 0 || diagnostics.raw.depth === 0) {
-      console.warn('[RealBuilding] Box3 has zero dimension!', diagnostics.raw);
-    }
-    if (isNaN(diagnostics.raw.minX) || isNaN(diagnostics.raw.minY) || isNaN(diagnostics.raw.minZ)) {
-      console.warn('[RealBuilding] Box3 has NaN!');
-    }
-    if (diagnostics.raw.height > 50) {
-      console.warn(`[RealBuilding] Height ${diagnostics.raw.height.toFixed(1)}m seems unrealistic for 4-storey (12-15m expected), check scale`);
-    }
+    (window as any).__lastBuildingDims = `${def.id}: raw ${diagnostics.raw.width.toFixed(3)}x${diagnostics.raw.height.toFixed(3)}x${diagnostics.raw.depth.toFixed(3)} -> world ${(diagnostics.raw.width * scaleNum).toFixed(1)}x${(diagnostics.raw.height * scaleNum).toFixed(1)}x${(diagnostics.raw.depth * scaleNum).toFixed(1)}m meshes:${diagnostics.meshCount} tris:${diagnostics.triangleCount} scale:${scaleNum} yOff:${finalTransform.yOffset.toFixed(2)} rot:${finalTransform.rotation.toFixed(2)}`;
 
     logBuildingDimensions(def.id, {
-      width: diagnostics.raw.width,
-      height: diagnostics.raw.height,
-      depth: diagnostics.raw.depth,
-      center: new THREE.Vector3(diagnostics.raw.centerX, diagnostics.raw.centerY, diagnostics.raw.centerZ),
-      min: new THREE.Vector3(diagnostics.raw.minX, diagnostics.raw.minY, diagnostics.raw.minZ),
-      max: new THREE.Vector3(diagnostics.raw.maxX, diagnostics.raw.maxY, diagnostics.raw.maxZ),
+      width: diagnostics.raw.width * scaleNum,
+      height: diagnostics.raw.height * scaleNum,
+      depth: diagnostics.raw.depth * scaleNum,
+      center: new THREE.Vector3(0, diagnostics.raw.height * scaleNum / 2, 0),
+      min: new THREE.Vector3(-diagnostics.raw.width * scaleNum / 2, 0, -diagnostics.raw.depth * scaleNum / 2),
+      max: new THREE.Vector3(diagnostics.raw.width * scaleNum / 2, diagnostics.raw.height * scaleNum, diagnostics.raw.depth * scaleNum / 2),
     } as any);
 
   }, [diagnostics, finalTransform, url, def.id, gltf.scene]);
 
-  if (!diagnostics) {
-    return null;
-  }
+  if (!diagnostics) return null;
 
   return (
     <group
@@ -405,75 +351,83 @@ export function RealBuilding({ url, def, fallback }: { url: string; def: Buildin
   );
 }
 
-// Abandoned house with door opening matching visual door, compound colliders based on real Box3
+// Abandoned house with door opening matching visual door, compound colliders based on REAL Box3
+// Production Box3 raw: W 0.621 H 0.912 D 0.571 -> scale 14.8 -> W 9.19 H 13.50 D 8.45
+// Asymmetric raw centerX -0.064 handled by centering model in GLBInner (offsetX)
 export function AbandonedHouseReal({ def }: { def: BuildingDef }) {
-  const { position, size, rotation = 0 } = def;
+  const { position, rotation = 0 } = def;
   const url = '/models/buildings/abandoned/abandoned_house_01.glb';
 
-  // For now use def.size as base, but after real Box3 is known on VPS, adjust
-  // These will be tuned after diagnostics on production
-  // Door at front center, width 1.2 height 2.3, facing +Z towards sidewalk
+  // Real dimensions after explicit scale 14.8
+  const realWidth = 0.621 * 14.8; // 9.1908
+  const realHeight = 0.912 * 14.8; // 13.4976
+  const realDepth = 0.571 * 14.8; // 8.4508
+
+  // Use real footprint for colliders, not old def.size [16,12,14]
   const wallThickness = 0.4;
-  const doorWidth = 1.2;
-  const doorHeight = 2.3;
-  const halfW = size[0] / 2;
-  const halfH = size[1] / 2;
-  const halfD = size[2] / 2;
+  const doorWidth = 1.4; // physical opening wider than visual 1.1 to allow capsule [0.65,0.35] clearance
+  const doorHeight = 2.4;
+  const halfW = realWidth / 2; // 4.595
+  const halfH = realHeight / 2; // 6.748
+  const halfD = realDepth / 2; // 4.225
 
-  const frontZ = halfD - wallThickness / 2;
-  const backZ = -halfD + wallThickness / 2;
-  const leftX = -halfW + wallThickness / 2;
-  const rightX = halfW - wallThickness / 2;
+  const frontZ = halfD - wallThickness / 2; // 4.025
+  const backZ = -halfD + wallThickness / 2; // -4.025
+  const leftX = -halfW + wallThickness / 2; // -4.395
+  const rightX = halfW - wallThickness / 2; // 4.395
 
-  const frontLeftWidth = halfW - doorWidth / 2;
-  const frontLeftHalfW = frontLeftWidth / 2;
-  const frontLeftCenterX = -halfW + frontLeftHalfW;
+  const frontLeftWidth = halfW - doorWidth / 2; // 4.595 - 0.7 = 3.895
+  const frontLeftHalfW = frontLeftWidth / 2; // 1.9475
+  const frontLeftCenterX = -halfW + frontLeftHalfW; // -4.595 +1.9475 = -2.6475
 
-  const frontRightHalfW = frontLeftHalfW;
-  const frontRightCenterX = halfW - frontRightHalfW;
+  const frontRightCenterX = halfW - frontLeftHalfW; // 2.6475
 
-  const topHeight = size[1] - doorHeight;
-  const topHalfH = topHeight / 2;
-  const topCenterY = doorHeight + topHalfH;
+  const topHeight = realHeight - doorHeight; // 11.0976
+  const topHalfH = topHeight / 2; // 5.5488
+  const topCenterY = doorHeight + topHalfH; // 7.9488
 
-  const floorHalfW = halfW - wallThickness;
-  const floorHalfD = halfD - wallThickness;
+  const floorHalfW = halfW - wallThickness; // 4.195
+  const floorHalfD = halfD - wallThickness; // 3.825
 
-  // Try to get real dimensions if already computed on VPS (via window.__buildingDims)
-  // This allows collider to adapt after first load
-  const [realDims, setRealDims] = useState<any>(null);
+  const [showDebug, setShowDebug] = useState(false);
   useEffect(() => {
     const interval = setInterval(() => {
-      const dims = (window as any).__buildingDims?.[def.id];
-      if (dims && !realDims) {
-        setRealDims(dims);
-        console.log(`[RealBuilding] Real dims available for collider tuning`, dims);
-      }
-    }, 1000);
+      setShowDebug(!!(window as any).__showDebug);
+    }, 200);
     return () => clearInterval(interval);
-  }, [def.id, realDims]);
-
-  // If real dims available, use them for collider (more accurate)
-  // For now keep using def.size but log real dims for manual tuning
-  useEffect(() => {
-    if (realDims) {
-      console.info(`[RealBuilding] Adjusting colliders based on real Box3: W ${realDims.width?.toFixed(2)} H ${realDims.height?.toFixed(2)} D ${realDims.depth?.toFixed(2)}`);
-      // Future: recompute collider positions based on realDims
-    }
-  }, [realDims]);
+  }, []);
 
   return (
     <RigidBody type="fixed" colliders={false} position={position} rotation={[0, rotation, 0]}>
-      {/* Front facade split - door opening free, matches visual door */}
+      {/* Front facade split - door opening free, matches visual door, clearance for capsule */}
       <CuboidCollider args={[frontLeftHalfW, halfH, wallThickness / 2]} position={[frontLeftCenterX, halfH, frontZ]} />
-      <CuboidCollider args={[frontRightHalfW, halfH, wallThickness / 2]} position={[frontRightCenterX, halfH, frontZ]} />
+      <CuboidCollider args={[frontLeftHalfW, halfH, wallThickness / 2]} position={[frontRightCenterX, halfH, frontZ]} />
       <CuboidCollider args={[doorWidth / 2, topHalfH, wallThickness / 2]} position={[0, topCenterY, frontZ]} />
       <CuboidCollider args={[halfW, halfH, wallThickness / 2]} position={[0, halfH, backZ]} />
       <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[leftX, halfH, 0]} />
       <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[rightX, halfH, 0]} />
-      <CuboidCollider args={[floorHalfW, 0.1, floorHalfD]} position={[0, 0.1, 0]} />
+      <CuboidCollider args={[floorHalfW, 0.12, floorHalfD]} position={[0, 0.12, 0]} />
 
       <RealBuilding url={url} def={def} />
+
+      {/* Debug visualization of colliders via F3 */}
+      {showDebug && (
+        <group>
+          {/* Front left */}
+          <mesh position={[frontLeftCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, realHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.3} /></mesh>
+          {/* Front right */}
+          <mesh position={[frontRightCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, realHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.3} /></mesh>
+          {/* Top above door */}
+          <mesh position={[0, topCenterY, frontZ]}><boxGeometry args={[doorWidth, topHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.3} /></mesh>
+          {/* Door opening free - green wireframe */}
+          <mesh position={[0, doorHeight/2, frontZ]}><boxGeometry args={[doorWidth, doorHeight, 0.1]} /><meshBasicMaterial color="#00ff00" wireframe transparent opacity={0.5} /></mesh>
+          {/* Back */}
+          <mesh position={[0, halfH, backZ]}><boxGeometry args={[realWidth, realHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.2} /></mesh>
+          {/* Sides */}
+          <mesh position={[leftX, halfH, 0]}><boxGeometry args={[wallThickness, realHeight, realDepth]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.2} /></mesh>
+          <mesh position={[rightX, halfH, 0]}><boxGeometry args={[wallThickness, realHeight, realDepth]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.2} /></mesh>
+        </group>
+      )}
     </RigidBody>
   );
 }
