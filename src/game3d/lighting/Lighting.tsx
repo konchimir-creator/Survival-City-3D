@@ -108,17 +108,17 @@ export function Lighting() {
         hemiSkyColor.setHSL(THREE.MathUtils.lerp(0.58, 0.08, t), THREE.MathUtils.lerp(0.45, 0.65, t), THREE.MathUtils.lerp(0.88, 0.58, t));
         hemiGroundColor.setHSL(0.08, 0.35, 0.30);
       } else {
-        // night - PLAYABLE, not pitch black
-        // Moon gives readable forms, weak shadows, character contour, road readable
-        sunIntensity = 0.02;
-        sunColor.setHSL(0.65, 0.15, 0.4);
-        moonIntensity = 0.42; // cold directional moon #8FA8D8
+        // night - PLAYABLE, readable but dark, per task: road/sidewalk/grass/trees/buildings/entrances/bus stops/signs readable
+        // Use moon directional fill + hemisphere + ambient floor + dark-blue fog
+        sunIntensity = 0.03;
+        sunColor.setHSL(0.65, 0.12, 0.38);
+        moonIntensity = 0.52; // increased from 0.42 for readability, cold directional #8FA8D8
         moonColor.set('#8FA8D8');
-        ambientIntensity = 0.42; // minimal ambient floor - was 0.18 too dark
-        ambientColor.setHSL(0.62, 0.22, 0.32); // cold blue-gray, not black
-        hemiIntensity = 0.38; // was 0.12 too dark, need fill for shadow sides
-        hemiSkyColor.setHSL(0.62, 0.35, 0.28); // cold blue-gray sky
-        hemiGroundColor.setHSL(0.62, 0.18, 0.14); // very dark blue-gray, not black
+        ambientIntensity = 0.52; // increased from 0.42 for floor readability
+        ambientColor.setHSL(0.62, 0.20, 0.38); // slightly brighter cold blue-gray
+        hemiIntensity = 0.48; // increased from 0.38 for shadow side fill
+        hemiSkyColor.setHSL(0.62, 0.32, 0.34);
+        hemiGroundColor.setHSL(0.62, 0.16, 0.18);
       }
 
       if (weather.type === 'cloudy') {
@@ -158,9 +158,9 @@ export function Lighting() {
       if (moonIntensity > 0.05) (window as any).__activeLights++;
       if (shadowEnabled) (window as any).__shadowLights = 1;
 
-      // Exposure: slightly higher at night for readability, not overbright day
+      // Exposure: higher at night for readability, per task night must be playable
       try {
-        const targetExposure = timeOfDay === 'night' ? 1.15 : timeOfDay === 'evening' || timeOfDay === 'dawn' ? 1.05 : 1.0;
+        const targetExposure = timeOfDay === 'night' ? 1.28 : timeOfDay === 'evening' || timeOfDay === 'dawn' ? 1.10 : 1.0;
         gl.toneMappingExposure = THREE.MathUtils.lerp(gl.toneMappingExposure || 1, targetExposure, 0.02);
       } catch {}
     } catch (e) {
