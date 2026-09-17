@@ -39,7 +39,7 @@ export function ShowcaseResidential({ def }: { def: BuildingDef }) {
   const plinthHeight = DIMS.plinthHeight;
   const doorWidth = DIMS.doorWidth; // visual 1.1m
   const doorHeight = DIMS.doorHeight; // visual 2.15m
-  const physicalDoorWidth = 1.4; // physical opening wider for capsule [0.65,0.35] clearance
+  const physicalDoorWidth = 1.5; // physical opening wider for capsule [0.65,0.35] clearance, allowed 1.4-1.5
   const physicalDoorHeight = 2.4;
   const wallThickness = DIMS.wallThickness;
   const stepHeight = DIMS.stepHeight;
@@ -56,8 +56,9 @@ export function ShowcaseResidential({ def }: { def: BuildingDef }) {
   const leftX = -halfW + wallThickness / 2;
   const rightX = halfW - wallThickness / 2;
 
-  // Front split for door opening - use physicalDoorWidth for clearance
-  const frontLeftWidth = halfW - physicalDoorWidth / 2;
+  // Front split for door opening - use physicalDoorWidth for clearance, ensure gap > capsule diameter 0.7m
+  // Make opening 1.5m, leave small overlap to avoid seam collision
+  const frontLeftWidth = halfW - physicalDoorWidth / 2 - 0.02; // 9.23 with 0.02 gap for seam
   const frontLeftHalfW = frontLeftWidth / 2;
   const frontLeftCenterX = -halfW + frontLeftHalfW;
 
@@ -71,7 +72,7 @@ export function ShowcaseResidential({ def }: { def: BuildingDef }) {
   const entranceRaise = stepHeight * 2; // 0.32
   const visualFloorY = entranceRaise; // 0.32
   const floorColliderHalfH = 0.12;
-  const floorPhysPosY = visualFloorY - floorColliderHalfH; // top = visualFloorY
+  const floorPhysPosY = visualFloorY - floorColliderHalfH; // top = visualFloorY 0.32
   const floorPhysTopY = floorPhysPosY + floorColliderHalfH;
 
   const floorHalfW = halfW - wallThickness;
@@ -312,16 +313,18 @@ export function ShowcaseResidential({ def }: { def: BuildingDef }) {
       <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[rightX, halfH, 0]} />
       {/* Interior floor - top matches visual floor Y=0.32 within 1cm */}
       <CuboidCollider args={[floorHalfW, floorColliderHalfH, floorHalfD]} position={[0, floorPhysPosY, 0]} />
-      {/* Interior vestibule walls - corridor 3m wide, not blocking door */}
+      {/* Interior vestibule walls - corridor 3m wide, not blocking door, placed behind doorway */}
       <CuboidCollider args={[0.15, 1.4, 1.5]} position={[-1.5, 1.4 + entranceRaise, halfD - 1.5]} />
       <CuboidCollider args={[0.15, 1.4, 1.5]} position={[1.5, 1.4 + entranceRaise, halfD - 1.5]} />
       <CuboidCollider args={[1.5, 1.4, 0.15]} position={[0, 1.4 + entranceRaise, halfD - 3]} />
-      {/* Steps - make ramp collider for frozen player capsule to climb, visual steps remain */}
-      {/* Visual steps at Y 0.08 and 0.24, but physical ramp from ground 0 to 0.32 over Z 0.5-0.9 */}
-      <CuboidCollider args={[0.9, 0.05, 0.5]} position={[doorX, 0.05, doorZ + 0.65]} />
-      <CuboidCollider args={[0.9, 0.05, 0.5]} position={[doorX, 0.20, doorZ + 0.35]} />
-      {/* Invisible ramp over steps - flat enough for capsule */}
-      <CuboidCollider args={[0.8, 0.16, 0.6]} position={[doorX, 0.16, doorZ + 0.45]} rotation={[ -0.3, 0, 0 ] as any} />
+      {/* Continuous physical path: OUTSIDE (ground Y=0) -> sidewalk -> threshold/ramp -> doorway -> interior floor */}
+      {/* Outside flat ground level - ensures capsule starts on solid before ramp */}
+      <CuboidCollider args={[1.0, 0.05, 0.6]} position={[doorX, 0.05, doorZ + 0.9]} />
+      {/* Invisible ramp over visual steps - smoothly connects outside ground 0 to interior floor 0.32 */}
+      {/* Ramp length 1.4m (half 0.7), height 0.32 (half 0.16), angle ~13deg rot -0.26 rad */}
+      <CuboidCollider args={[0.8, 0.16, 0.7]} position={[doorX, 0.16, doorZ + 0.2]} rotation={[-0.26, 0, 0] as any} />
+      {/* Interior threshold extension - overlaps ramp and main floor, no gap */}
+      <CuboidCollider args={[0.75, 0.12, 0.6]} position={[doorX, floorPhysPosY, doorZ - 0.5]} />
 
       <group>
         {/* Plinth 0.6m */}
@@ -420,14 +423,21 @@ export function ShowcaseResidential({ def }: { def: BuildingDef }) {
           <mesh position={[0, 1.2, 1.5]}><boxGeometry args={[1.2, 2.15, 0.08]} /><meshStandardMaterial color="#3a2a1a" roughness={0.8} /></mesh>
         </group>
 
-        {/* Debug colliders visualization via F3 */}
+        {/* Debug colliders visualization via F3 - RED solid, GREEN doorway corridor, BLUE floor/ramp */}
         {showDebug && (
           <group>
             <mesh position={[frontLeftCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, height, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.25} /></mesh>
             <mesh position={[frontRightCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, height, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.25} /></mesh>
             <mesh position={[0, topCenterY, frontZ]}><boxGeometry args={[physicalDoorWidth, topHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.25} /></mesh>
-            <mesh position={[0, physicalDoorHeight/2, frontZ]}><boxGeometry args={[physicalDoorWidth, physicalDoorHeight, 0.1]} /><meshBasicMaterial color="#00ff00" wireframe transparent opacity={0.5} /></mesh>
-            <mesh position={[0, floorPhysPosY, 0]}><boxGeometry args={[floorHalfW*2, floorColliderHalfH*2, floorHalfD*2]} /><meshBasicMaterial color="#0000ff" wireframe transparent opacity={0.2} /></mesh>
+            {/* GREEN physical doorway + free corridor */}
+            <mesh position={[0, physicalDoorHeight/2, frontZ]}><boxGeometry args={[physicalDoorWidth, physicalDoorHeight, 0.15]} /><meshBasicMaterial color="#00ff00" wireframe transparent opacity={0.6} /></mesh>
+            <mesh position={[0, 0.5, doorZ + 0.2]}><boxGeometry args={[physicalDoorWidth, 0.3, 1.8]} /><meshBasicMaterial color="#00ff00" wireframe transparent opacity={0.3} /></mesh>
+            {/* BLUE interior floor / ramp */}
+            <mesh position={[0, floorPhysPosY, 0]}><boxGeometry args={[floorHalfW*2, floorColliderHalfH*2, floorHalfD*2]} /><meshBasicMaterial color="#0000ff" wireframe transparent opacity={0.25} /></mesh>
+            <mesh position={[0, 0.16, doorZ + 0.2]} rotation={[-0.26, 0, 0]}><boxGeometry args={[1.6, 0.32, 1.4]} /><meshBasicMaterial color="#0000ff" wireframe transparent opacity={0.3} /></mesh>
+            <mesh position={[0, floorPhysPosY, doorZ - 0.5]}><boxGeometry args={[1.5, 0.24, 1.2]} /><meshBasicMaterial color="#0000ff" wireframe transparent opacity={0.3} /></mesh>
+            {/* Outside flat */}
+            <mesh position={[0, 0.05, doorZ + 0.9]}><boxGeometry args={[2.0, 0.1, 1.2]} /><meshBasicMaterial color="#00ffff" wireframe transparent opacity={0.2} /></mesh>
           </group>
         )}
       </group>

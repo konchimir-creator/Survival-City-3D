@@ -556,6 +556,7 @@ export function RealBuilding({ url, def, fallback, assetId }: { url: string; def
 // Abandoned house with door opening matching visual door, compound colliders based on REAL Box3
 // Production Box3 raw: W 0.621 H 0.912 D 0.571 -> scale 14.8 -> W 9.19 H 13.50 D 8.45
 // Asymmetric raw centerX -0.064 handled by centering model in GLBInner (offsetX)
+// Fixed continuous path: OUTSIDE -> sidewalk -> ramp -> doorway -> interior floor
 export function AbandonedHouseReal({ def }: { def: BuildingDef }) {
   const { position, rotation = 0 } = def;
   const url = '/models/buildings/abandoned/abandoned_house_01.glb';
@@ -566,18 +567,19 @@ export function AbandonedHouseReal({ def }: { def: BuildingDef }) {
   const realDepth = 0.571 * 14.8; // 8.4508
 
   const wallThickness = 0.4;
-  const doorWidth = 1.4;
+  const doorWidth = 1.5; // physical 1.5m allowed 1.4-1.5 for capsule clearance
   const doorHeight = 2.4;
   const halfW = realWidth / 2;
   const halfH = realHeight / 2;
   const halfD = realDepth / 2;
 
-  const frontZ = halfD - wallThickness / 2;
+  const frontZ = halfD - wallThickness / 2; // 4.025
   const backZ = -halfD + wallThickness / 2;
   const leftX = -halfW + wallThickness / 2;
   const rightX = halfW - wallThickness / 2;
 
-  const frontLeftWidth = halfW - doorWidth / 2;
+  // Front split with small seam gap to avoid edge collision
+  const frontLeftWidth = halfW - doorWidth / 2 - 0.02;
   const frontLeftHalfW = frontLeftWidth / 2;
   const frontLeftCenterX = -halfW + frontLeftHalfW;
   const frontRightCenterX = halfW - frontLeftHalfW;
@@ -586,6 +588,95 @@ export function AbandonedHouseReal({ def }: { def: BuildingDef }) {
   const topHalfH = topHeight / 2;
   const topCenterY = doorHeight + topHalfH;
 
+  const floorHalfW = halfW - wallThickness; // 4.195
+  const floorHalfD = halfD - wallThickness; // 3.825
+  const floorPosY = 0.12;
+  const floorTopY = 0.24;
+
+  // Continuous path helpers
+  const doorZ = frontZ; // front facade at ~4.025
+  // Ramp from outside ground Y=0 to interior floor top 0.24
+  // length 1.2m, height 0.24, angle ~11deg rot -0.197 rad
+  const rampHalfH = 0.12;
+  const rampHalfZ = 0.6;
+  const rampPosY = 0.12;
+  const rampPosZ = doorZ + 0.1; // center slightly outside
+  const rampRot = -0.20;
+
+  const [showDebug, setShowDebug] = useState(false);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setShowDebug(!!(window as any).__showDebug);
+    }, 200);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <RigidBody type="fixed" colliders={false} position={position} rotation={[0, rotation, 0]}>
+      {/* Front facade split - door opening free */}
+      <CuboidCollider args={[frontLeftHalfW, halfH, wallThickness / 2]} position={[frontLeftCenterX, halfH, frontZ]} />
+      <CuboidCollider args={[frontLeftHalfW, halfH, wallThickness / 2]} position={[frontRightCenterX, halfH, frontZ]} />
+      <CuboidCollider args={[doorWidth / 2, topHalfH, wallThickness / 2]} position={[0, topCenterY, frontZ]} />
+      <CuboidCollider args={[halfW, halfH, wallThickness / 2]} position={[0, halfH, backZ]} />
+      <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[leftX, halfH, 0]} />
+      <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[rightX, halfH, 0]} />
+      {/* Interior floor */}
+      <CuboidCollider args={[floorHalfW, 0.12, floorHalfD]} position={[0, floorPosY, 0]} />
+      {/* Continuous path: outside flat -> ramp -> threshold extension */}
+      <CuboidCollider args={[1.0, 0.05, 0.6]} position={[0, 0.05, doorZ + 0.9]} />
+      <CuboidCollider args={[0.8, rampHalfH, rampHalfZ]} position={[0, rampPosY, rampPosZ]} rotation={[rampRot, 0, 0] as any} />
+      <CuboidCollider args={[0.75, 0.12, 0.5]} position={[0, floorPosY, doorZ - 0.4]} />
+      {/* Simple vestibule to avoid seeing void, not blocking */}
+      <CuboidCollider args={[0.12, 1.2, 1.0]} position={[-1.2, 1.2, halfD - 1.2]} />
+      <CuboidCollider args={[0.12, 1.2, 1.0]} position={[1.2, 1.2, halfD - 1.2]} />
+
+      <RealBuilding url={url} def={def} assetId="abandoned_house_01" />
+
+      {showDebug && (
+        <group>
+          <mesh position={[frontLeftCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, realHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.3} /></mesh>
+          <mesh position={[frontRightCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, realHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.3} /></mesh>
+          <mesh position={[0, topCenterY, frontZ]}><boxGeometry args={[doorWidth, topHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.3} /></mesh>
+          <mesh position={[0, doorHeight/2, frontZ]}><boxGeometry args={[doorWidth, doorHeight, 0.15]} /><meshBasicMaterial color="#00ff00" wireframe transparent opacity={0.6} /></mesh>
+          <mesh position={[0, 0.5, doorZ + 0.2]}><boxGeometry args={[doorWidth, 0.4, 1.8]} /><meshBasicMaterial color="#00ff00" wireframe transparent opacity={0.25} /></mesh>
+          <mesh position={[0, halfH, backZ]}><boxGeometry args={[realWidth, realHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.2} /></mesh>
+          <mesh position={[leftX, halfH, 0]}><boxGeometry args={[wallThickness, realHeight, realDepth]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.2} /></mesh>
+          <mesh position={[rightX, halfH, 0]}><boxGeometry args={[wallThickness, realHeight, realDepth]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.2} /></mesh>
+          <mesh position={[0, floorPosY, 0]}><boxGeometry args={[floorHalfW*2, 0.24, floorHalfD*2]} /><meshBasicMaterial color="#0000ff" wireframe transparent opacity={0.25} /></mesh>
+          <mesh position={[0, rampPosY, rampPosZ]} rotation={[rampRot, 0, 0]}><boxGeometry args={[1.6, 0.24, 1.2]} /><meshBasicMaterial color="#0000ff" wireframe transparent opacity={0.3} /></mesh>
+        </group>
+      )}
+    </RigidBody>
+  );
+}
+
+// Second real abandoned building - diagnostic stage, scale 1, enterable with continuous path
+// Real dimensions unknown until production Box3, use def.size as placeholder but with proper doorway
+export function AbandonedHouse02Real({ def }: { def: BuildingDef }) {
+  const { position, rotation = 0, size } = def;
+  const url = '/models/buildings/abandoned/abandoned_house_02.glb';
+
+  // Use def.size as placeholder for collider until real Box3 known
+  const width = size[0];
+  const height = size[1];
+  const depth = size[2];
+  const halfW = width / 2;
+  const halfH = height / 2;
+  const halfD = depth / 2;
+  const wallThickness = 0.4;
+  const doorWidth = 1.5;
+  const doorHeight = 2.4;
+  const frontZ = halfD - wallThickness / 2;
+  const backZ = -halfD + wallThickness / 2;
+  const leftX = -halfW + wallThickness / 2;
+  const rightX = halfW - wallThickness / 2;
+  const frontLeftWidth = halfW - doorWidth / 2 - 0.02;
+  const frontLeftHalfW = frontLeftWidth / 2;
+  const frontLeftCenterX = -halfW + frontLeftHalfW;
+  const frontRightCenterX = halfW - frontLeftHalfW;
+  const topHeight = height - doorHeight;
+  const topHalfH = topHeight / 2;
+  const topCenterY = doorHeight + topHalfH;
   const floorHalfW = halfW - wallThickness;
   const floorHalfD = halfD - wallThickness;
 
@@ -599,6 +690,7 @@ export function AbandonedHouseReal({ def }: { def: BuildingDef }) {
 
   return (
     <RigidBody type="fixed" colliders={false} position={position} rotation={[0, rotation, 0]}>
+      {/* Compound collider with doorway - will be retuned after real Box3 */}
       <CuboidCollider args={[frontLeftHalfW, halfH, wallThickness / 2]} position={[frontLeftCenterX, halfH, frontZ]} />
       <CuboidCollider args={[frontLeftHalfW, halfH, wallThickness / 2]} position={[frontRightCenterX, halfH, frontZ]} />
       <CuboidCollider args={[doorWidth / 2, topHalfH, wallThickness / 2]} position={[0, topCenterY, frontZ]} />
@@ -606,53 +698,20 @@ export function AbandonedHouseReal({ def }: { def: BuildingDef }) {
       <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[leftX, halfH, 0]} />
       <CuboidCollider args={[wallThickness / 2, halfH, halfD]} position={[rightX, halfH, 0]} />
       <CuboidCollider args={[floorHalfW, 0.12, floorHalfD]} position={[0, 0.12, 0]} />
-
-      <RealBuilding url={url} def={def} assetId="abandoned_house_01" />
-
-      {showDebug && (
-        <group>
-          <mesh position={[frontLeftCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, realHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.3} /></mesh>
-          <mesh position={[frontRightCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, realHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.3} /></mesh>
-          <mesh position={[0, topCenterY, frontZ]}><boxGeometry args={[doorWidth, topHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.3} /></mesh>
-          <mesh position={[0, doorHeight/2, frontZ]}><boxGeometry args={[doorWidth, doorHeight, 0.1]} /><meshBasicMaterial color="#00ff00" wireframe transparent opacity={0.5} /></mesh>
-          <mesh position={[0, halfH, backZ]}><boxGeometry args={[realWidth, realHeight, wallThickness]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.2} /></mesh>
-          <mesh position={[leftX, halfH, 0]}><boxGeometry args={[wallThickness, realHeight, realDepth]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.2} /></mesh>
-          <mesh position={[rightX, halfH, 0]}><boxGeometry args={[wallThickness, realHeight, realDepth]} /><meshBasicMaterial color="#ff0000" wireframe transparent opacity={0.2} /></mesh>
-        </group>
-      )}
-    </RigidBody>
-  );
-}
-
-// Second real abandoned building - diagnostic stage, scale 1, simple collider, separate placement
-export function AbandonedHouse02Real({ def }: { def: BuildingDef }) {
-  const { position, rotation = 0, size } = def;
-  const url = '/models/buildings/abandoned/abandoned_house_02.glb';
-
-  // Diagnostic stage: real dimensions unknown, use def.size for simple collider
-  // Do NOT copy compound collider dimensions from house_01
-  const halfW = size[0] / 2;
-  const halfH = size[1] / 2;
-  const halfD = size[2] / 2;
-
-  const [showDebug, setShowDebug] = useState(false);
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setShowDebug(!!(window as any).__showDebug);
-    }, 200);
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <RigidBody type="fixed" colliders={false} position={position} rotation={[0, rotation, 0]}>
-      {/* Simple fallback collider for diagnostic stage - real collider will be tuned after production Box3 */}
-      <CuboidCollider args={[halfW, halfH, halfD]} position={[0, halfH, 0]} />
+      {/* Continuous path */}
+      <CuboidCollider args={[1.0, 0.05, 0.6]} position={[0, 0.05, frontZ + 0.9]} />
+      <CuboidCollider args={[0.8, 0.12, 0.6]} position={[0, 0.12, frontZ + 0.1]} rotation={[-0.20, 0, 0] as any} />
+      <CuboidCollider args={[0.75, 0.12, 0.5]} position={[0, 0.12, frontZ - 0.4]} />
 
       <RealBuilding url={url} def={def} assetId="abandoned_house_02" />
 
       {showDebug && (
         <group>
-          <mesh position={[0, halfH, 0]}><boxGeometry args={[size[0], size[1], size[2]]} /><meshBasicMaterial color="#ff8800" wireframe transparent opacity={0.3} /></mesh>
+          <mesh position={[frontLeftCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, height, wallThickness]} /><meshBasicMaterial color="#ff8800" wireframe transparent opacity={0.3} /></mesh>
+          <mesh position={[frontRightCenterX, halfH, frontZ]}><boxGeometry args={[frontLeftWidth, height, wallThickness]} /><meshBasicMaterial color="#ff8800" wireframe transparent opacity={0.3} /></mesh>
+          <mesh position={[0, topCenterY, frontZ]}><boxGeometry args={[doorWidth, topHeight, wallThickness]} /><meshBasicMaterial color="#ff8800" wireframe transparent opacity={0.3} /></mesh>
+          <mesh position={[0, doorHeight/2, frontZ]}><boxGeometry args={[doorWidth, doorHeight, 0.15]} /><meshBasicMaterial color="#00ff00" wireframe transparent opacity={0.5} /></mesh>
+          <mesh position={[0, halfH, 0]}><boxGeometry args={[width, height, depth]} /><meshBasicMaterial color="#ff8800" wireframe transparent opacity={0.2} /></mesh>
         </group>
       )}
     </RigidBody>
