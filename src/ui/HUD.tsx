@@ -92,7 +92,8 @@ function DebugOverlay() {
         <div>Zustand Pos: {debugData.playerPos[0]}, {debugData.playerPos[1]}, {debugData.playerPos[2]}</div>
         <div>Vel REF: {debugData.transform ? `${debugData.transform.vx},${debugData.transform.vy},${debugData.transform.vz}` : 'none'}</div>
         <div>Vel Input: {debugData.input?.vel ? `${debugData.input.vel[0].toFixed(2)},${debugData.input.vel[1].toFixed(2)},${debugData.input.vel[2].toFixed(2)}` : 'none'}</div>
-        <div>BodyCenterY: {debugData.input?.bodyCenterY || 'n/a'} ColliderBottomY: {debugData.input?.colliderBottomY || 'n/a'} GroundTopY: {debugData.input?.groundTopY || '0'}</div>
+        <div>BodyCenterY: {debugData.input?.bodyCenterY || 'n/a'} ColliderBottomY: {debugData.input?.colliderBottomY || 'n/a'} GroundTopY: {debugData.input?.groundTopY || '0'} VisualFeetY: {debugData.input?.visualFeetY || 'n/a'}</div>
+        <div>CamF: {debugData.input?.camForward || 'n/a'} CamR: {debugData.input?.camRight || 'n/a'}</div>
         <div>Rot: {debugData.playerRot}°</div>
         <div>SavedValid: {debugData.savedValid === undefined ? 'new/forced' : debugData.savedValid ? 'true' : 'false (forced SAFE_SPAWN)'}</div>
       </div>
@@ -139,10 +140,10 @@ function DebugOverlay() {
       </div>
 
       <div className="mt-2 text-[10px] text-gray-400">
-        DIAGNOSTIC MODE: simple world movement W=+Z S=-Z A=-X D=+X, no accel smoothing, no grounded raycast, no camera-relative, no collision<br/>
-        SAFE_SPAWN [15,2,15] forced, red pillar marker at spawn, player is humanoid + red cube fallback<br/>
-        Camera reads REF not Zustand, hard reset if &gt;20m, collision DISABLED<br/>
-        After fix: return camera-relative and enable collision in next commit
+        CAMERA-RELATIVE: forward = camTarget-camPos horizontal, right = forward cross up (-X at yaw0)<br/>
+        W=+forward S=-forward A=screen LEFT (+X at yaw0) D=screen RIGHT (-X at yaw0) per Three lookAt<br/>
+        Visual offset MODEL_Y_OFFSET=0.27 to make feet 0.02-0.05 above ground, collider bottom = ground top =0<br/>
+        After fix: idle stable, feet on surface, A left D right visually, 90deg camera turn test
       </div>
     </div>
   );
